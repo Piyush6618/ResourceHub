@@ -1,38 +1,422 @@
-.App {
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  color: #252a34;
+  background: #f7f8fa;
+}
+
+button, input, select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+.topbar {
+  height: 64px;
+  padding: 0 6%;
+  background: white;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.topbar h2 {
+  color: #1d4ed8;
+  font-size: 21px;
+}
+
+.topbar span {
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.workspace {
+  display: flex;
+  max-width: 1250px;
+  margin: auto;
+  padding: 32px 24px;
+  gap: 32px;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+}
+
+.label {
+  color: #6b7280;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.sidebar h3 {
+  font-size: 16px;
+  margin: 22px 0 12px;
+}
+
+.subject {
+  display: block;
+  width: 100%;
+  padding: 11px 12px;
+  margin-bottom: 4px;
+  text-align: left;
+  color: #4b5563;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+}
+
+.subject:hover,
+.subject.active {
+  background: #e8efff;
+  color: #1d4ed8;
+}
+
+.subject.active {
+  font-weight: bold;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.content h1 {
+  margin: 12px 0;
+  font-size: 28px;
+}
+
+.description {
+  color: #6b7280;
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.filters {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.filters input,
+.filters select {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  outline: none;
+}
+
+.filters input {
+  flex: 1;
+  min-width: 0;
+}
+
+.filters input:focus,
+.filters select:focus {
+  border-color: #2563eb;
+}
+
+.count {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.resource-list {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+}
+
+.resource-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.resource-row:last-child {
+  border-bottom: none;
+}
+
+.file-icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.resource-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.resource-info h3 {
+  margin: 0 0 7px;
+  font-size: 15px;
+}
+
+.resource-info p {
+  margin: 0 0 6px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.resource-info span {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.like-button {
+  padding: 8px 10px;
+  color: #4b5563;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 5px;
+}
+
+.like-button:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+}
+
+.empty-state {
+  padding: 40px 20px;
   text-align: center;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.empty-state p {
+  color: #6b7280;
+  font-size: 14px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
+.empty-state button {
+  padding: 9px 14px;
+  background: #1d4ed8;
+  color: white;
+  border: none;
+  border-radius: 5px;
+}
+
+@media (max-width: 700px) {
+  .topbar {
+    padding: 0 18px;
+  }
+
+  .workspace {
+    padding: 24px 16px;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .sidebar h3 {
+    margin-top: 12px;
+  }
+
+  .subject {
+    display: inline-block;
+    width: auto;
+    margin-right: 5px;
+  }
+
+  .content h1 {
+    font-size: 24px;
+  }
+
+  .filters {
+    flex-direction: column;
+  }
+
+  .filters input,
+  .filters select {
+    width: 100%;
+  }
+
+  .resource-row {
+    gap: 10px;
+    padding: 13px;
+  }
+
+  .file-icon {
+    width: 42px;
+    height: 42px;
   }
 }
+.upload-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+  margin: 24px 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 7px;
+}
 
-.App-header {
-  background-color: #282c34;
+.upload-form h2 {
+  width: 100%;
+  margin: 0 0 5px;
+  font-size: 17px;
+}
+
+.upload-form input,
+.upload-form select {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+}
+
+.upload-form input {
+  flex: 1;
+}
+
+.upload-form button {
+  padding: 10px 14px;
+  color: white;
+  background: #1d4ed8;
+  border: none;
+  border-radius: 5px;
+}
+
+.upload-form button:hover {
+  background: #1e40af;
+}
+
+@media (max-width: 700px) {
+  .upload-form {
+    flex-direction: column;
+  }
+
+  .upload-form input,
+  .upload-form select,
+  .upload-form button {
+    width: 100%;
+  }
+}
+.download-button {
+  padding: 9px 12px;
+  margin-left: 8px;
+  background: white;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.download-button:hover {
+  background: #f3f4f6;
+}
+
+.auth-page {
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: calc(10px + 2vmin);
+  padding: 20px;
+  background: #f5f6f8;
+}
+
+.auth-form {
+  width: 100%;
+  max-width: 400px;
+  padding: 28px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.auth-form h1 {
+  margin: 0 0 8px;
+  color: #1d4ed8;
+  font-size: 26px;
+}
+
+.auth-form > p {
+  color: #64748b;
+  margin-bottom: 22px;
+}
+
+.auth-form label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 14px;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 11px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font: inherit;
+}
+
+.auth-form > button {
+  width: 100%;
+  margin-top: 20px;
+  padding: 11px;
+  border: none;
+  border-radius: 5px;
+  background: #1d4ed8;
   color: white;
+  cursor: pointer;
 }
 
-.App-link {
-  color: #61dafb;
+.auth-form .auth-message {
+  overflow-wrap: anywhere;
+  font-size: 14px;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.auth-form .auth-switch {
+  margin: 20px 0 0;
+  font-size: 14px;
+}
+
+.auth-switch button {
+  border: none;
+  background: none;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+}
+.account-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.account-bar button {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  background: white;
+  cursor: pointer;
+}
+
+.account-bar button:hover {
+  background: #f3f4f6;
 }
