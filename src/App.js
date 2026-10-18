@@ -1,20 +1,27 @@
 
 import { useState, useEffect } from "react";
 import "./App.css";
+
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import ResourceRow from "./components/ResourceRow";
 import UploadForm from "./components/UploadForm";
-import { supabase } from "./supabaseClient";
+import GoogleDriveConnect from "./components/GoogleDriveConnect";
 import AuthForm from "./components/AuthForm";
+
+import { supabase } from "./supabaseClient";
 
 function App() {
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("All Subjects");
   const [fileType, setFileType] = useState("All Files");
+  const [sortBy, setSortBy] = useState("newest");
+
   const [resourceList, setResourceList] = useState([]);
   const [session, setSession] = useState(null);
   const [userRole, setUserRole] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
+
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingResources, setLoadingResources] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -53,6 +60,7 @@ function App() {
     if (!session) {
       setResourceList([]);
       setUserRole(null);
+      setUserProfile(null);
       setLoadingResources(false);
       return;
     }
@@ -63,10 +71,11 @@ function App() {
       setLoadingResources(true);
       setErrorMessage("");
       setUserRole(null);
+      setUserProfile(null);
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("role, display_name, designation")
         .eq("id", session.user.id)
         .single();
 
@@ -74,13 +83,14 @@ function App() {
 
       if (profileError) {
         setErrorMessage(
-          "Could not load user role: " + profileError.message
+          "Could not load user profile: " + profileError.message
         );
         setLoadingResources(false);
         return;
       }
 
       setUserRole(profile.role);
+      setUserProfile(profile);
 
       const { data, error } = await supabase
         .from("resources")
@@ -93,6 +103,32 @@ function App() {
         setErrorMessage(error.message);
         setLoadingResources(false);
         return;
+      }
+
+      const ownerIds = [
+        ...new Set(data.map((item) => item.owner_id))
+      ];
+
+      let profilesData = [];
+
+      if (ownerIds.length > 0) {
+        const { data: profiles, error: profilesError } = await supabase
+          .from("profiles")
+          .select("id, display_name, designation, role")
+          .in("id", ownerIds);
+
+        if (!mounted) return;
+
+        if (profilesError) {
+          setErrorMessage(
+            "Could not load uploader details: " +
+              profilesError.message
+          );
+          setLoadingResources(false);
+          return;
+        }
+
+        profilesData = profiles;
       }
 
       const { data: likesData, error: likesError } = await supabase
@@ -116,20 +152,24 @@ function App() {
           (like) => like.user_id === session.user.id
         );
 
+        const uploaderProfile = profilesData.find(
+          (profile) => profile.id === item.owner_id
+        );
+
         return {
           id: item.id,
           title: item.title,
           subject: item.subject,
           type: item.file_type,
-          uploader:
-            item.owner_id === session.user.id
-              ? session.user.email
-              : "ResourceHub user",
+          uploaderName:
+            uploaderProfile?.display_name || "ResourceHub user",
+          designation: uploaderProfile?.designation || "",
           date: new Date(item.created_at).toLocaleDateString("en-GB", {
             day: "2-digit",
             month: "short",
             year: "numeric"
           }),
+          createdAt: item.created_at,
           likes: resourceLikes.length,
           likedByMe: likedByMe,
           fileName: item.file_name,
@@ -159,6 +199,14 @@ function App() {
       (subject === "All Subjects" || item.subject === subject) &&
       (fileType === "All Files" || item.type === fileType)
     );
+  });
+
+  const sortedResources = [...filteredResources].sort((a, b) => {
+    if (sortBy === "mostLiked") {
+      return b.likes - a.likes;
+    }
+
+    return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
   async function likeResource(id) {
@@ -221,6 +269,11 @@ function App() {
   async function addResource(newResource) {
     setErrorMessage("");
 
+    if (userRole !== "facilitator") {
+      setErrorMessage("Only facilitators can upload resources.");
+      return false;
+    }
+
     const file = newResource.file;
     const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const filePath =
@@ -250,11 +303,7 @@ function App() {
 
     if (error) {
       setErrorMessage(error.message);
-
-      await supabase.storage
-        .from("resources")
-        .remove([filePath]);
-
+      await supabase.storage.from("resources").remove([filePath]);
       return false;
     }
 
@@ -264,12 +313,14 @@ function App() {
         title: data.title,
         subject: data.subject,
         type: data.file_type,
-        uploader: session.user.email,
+        uploaderName: userProfile?.display_name || "ResourceHub user",
+        designation: userProfile?.designation || "",
         date: new Date(data.created_at).toLocaleDateString("en-GB", {
           day: "2-digit",
           month: "short",
           year: "numeric"
         }),
+        createdAt: data.created_at,
         likes: 0,
         likedByMe: false,
         fileName: data.file_name,
@@ -322,7 +373,14 @@ function App() {
           </p>
 
           {userRole === "facilitator" && (
-            <UploadForm addResource={addResource} />
+            <>
+              <GoogleDriveConnect
+                session={session}
+                userRole={userRole}
+              />
+
+              <UploadForm addResource={addResource} />
+            </>
           )}
 
           {errorMessage && (
@@ -346,6 +404,15 @@ function App() {
               <option value="PPT">PPT</option>
               <option value="PPTX">PPTX</option>
             </select>
+
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+              aria-label="Sort resources"
+            >
+              <option value="newest">Newest first</option>
+              <option value="mostLiked">Most liked</option>
+            </select>
           </div>
 
           {loadingResources ? (
@@ -353,16 +420,17 @@ function App() {
           ) : (
             <>
               <p className="count">
-                {filteredResources.length} resources
+                {sortedResources.length} resources
               </p>
 
               <div className="resource-list">
-                {filteredResources.length > 0 ? (
-                  filteredResources.map((item) => (
+                {sortedResources.length > 0 ? (
+                  sortedResources.map((item) => (
                     <ResourceRow
                       key={item.id}
                       item={item}
                       likeResource={likeResource}
+                      session={session}
                     />
                   ))
                 ) : (
@@ -377,6 +445,7 @@ function App() {
                         setSearch("");
                         setSubject("All Subjects");
                         setFileType("All Files");
+                        setSortBy("newest");
                       }}
                     >
                       Clear filters
