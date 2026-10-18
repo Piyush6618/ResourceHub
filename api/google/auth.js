@@ -38,15 +38,12 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const userResponse = await fetch(
-      `${supabaseUrl}/auth/v1/user`,
-      {
-        headers: {
-          apikey: SUPABASE_SERVICE_ROLE_KEY,
-          Authorization: `Bearer ${accessToken}`
-        }
+    const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${accessToken}`
       }
-    );
+    });
 
     if (!userResponse.ok) {
       return res.status(401).send("Your ResourceHub session is invalid");
@@ -98,15 +95,14 @@ module.exports = async (req, res) => {
     const url = oauth.generateAuthUrl({
       access_type: "offline",
       prompt: "consent",
-      scope: [
-        "https://www.googleapis.com/auth/drive.file"
-      ],
+      scope: ["https://www.googleapis.com/auth/drive.file"],
       state: nonce
     });
 
-    return res.redirect(url);
-  } catch (error) {
-    console.error("Google authorization setup failed");
+    res.setHeader("Cache-Control", "no-store");
     return res.status(200).json({ url });
+  } catch (error) {
+    console.error("Google authorization setup failed:", error.message);
+    return res.status(500).send("Could not start Google authorization");
   }
 };
