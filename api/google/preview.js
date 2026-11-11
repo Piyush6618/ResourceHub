@@ -93,7 +93,21 @@ module.exports = async (req, res) => {
     }
 
     const tokenRows = await tokenResponse.json();
-    const savedTokens = tokenRows[0];
+    let savedTokens = tokenRows[0];
+
+    if (!savedTokens || !savedTokens.refresh_token) {
+      const fallbackResponse = await fetch(
+        `${supabaseUrl}/rest/v1/google_drive_tokens?select=access_token,refresh_token,expiry_date&order=updated_at.desc&limit=1`,
+        { headers }
+      );
+
+      if (!fallbackResponse.ok) {
+        return res.status(500).send("Could not check Google authorization");
+      }
+
+      const fallbackRows = await fallbackResponse.json();
+      savedTokens = fallbackRows[0];
+    }
 
     if (!savedTokens || !savedTokens.refresh_token) {
       return res.status(409).send(

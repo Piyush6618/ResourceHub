@@ -1,4 +1,3 @@
-
 function GoogleDriveConnect({ session, userRole }) {
   async function connectGoogleDrive() {
     if (userRole !== "facilitator") {
@@ -41,14 +40,41 @@ function GoogleDriveConnect({ session, userRole }) {
     return null;
   }
 
+  const justConnected =
+    typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("google_connected") === "1";
+
   return (
-    <button
-      type="button"
-      className="google-connect-button"
-      onClick={connectGoogleDrive}
-    >
-      Connect Google Drive
-    </button>
+    <div className="integration-bar">
+      <div className="integration-meta">
+        <span
+          className={
+            justConnected
+              ? "status-dot status-dot-connected"
+              : "status-dot status-dot-neutral"
+          }
+          aria-hidden="true"
+        />
+        <div className="integration-text">
+          <span className="integration-title">
+            {justConnected
+              ? "Google Drive connected"
+              : "Google Drive integration"}
+          </span>
+          <span className="integration-subtitle">
+            Used to convert PPT and PPTX slides into in-browser PDF previews.
+          </span>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        className="google-connect-button"
+        onClick={connectGoogleDrive}
+      >
+        Connect Google Drive
+      </button>
+    </div>
   );
 }
 

@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import "./App.css";
 
 import TopBar from "./components/TopBar";
@@ -11,11 +10,14 @@ import AuthForm from "./components/AuthForm";
 
 import { supabase } from "./supabaseClient";
 
+const RESOURCE_UPLOAD_ROLES = ["facilitator", "teacher"];
+
 function App() {
   const [search, setSearch] = useState("");
   const [subject, setSubject] = useState("All Subjects");
   const [fileType, setFileType] = useState("All Files");
   const [sortBy, setSortBy] = useState("newest");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [resourceList, setResourceList] = useState([]);
   const [session, setSession] = useState(null);
@@ -25,6 +27,8 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingResources, setLoadingResources] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     let mounted = true;
@@ -193,6 +197,15 @@ function App() {
     ...new Set(resourceList.map((item) => item.subject))
   ];
 
+  const subjectCounts = resourceList.reduce(
+    (acc, item) => {
+      acc["All Subjects"] = (acc["All Subjects"] || 0) + 1;
+      acc[item.subject] = (acc[item.subject] || 0) + 1;
+      return acc;
+    },
+    { "All Subjects": 0 }
+  );
+
   const filteredResources = resourceList.filter((item) => {
     return (
       item.title.toLowerCase().includes(search.toLowerCase()) &&
@@ -266,11 +279,13 @@ function App() {
     }
   }
 
+  const canUploadResource = RESOURCE_UPLOAD_ROLES.includes(userRole);
+
   async function addResource(newResource) {
     setErrorMessage("");
 
-    if (userRole !== "facilitator") {
-      setErrorMessage("Only facilitators can upload resources.");
+    if (!canUploadResource) {
+      setErrorMessage("Only facilitators and teachers can upload resources.");
       return false;
     }
 
@@ -341,46 +356,73 @@ function App() {
   }
 
   if (!authChecked) {
-    return <p>Loading ResourceHub...</p>;
+    return (
+      <div className="app-boot">
+        <p className="status-text">Loading ResourceHub...</p>
+      </div>
+    );
   }
 
   if (!session) {
     return <AuthForm />;
   }
 
+  const hasActiveFilters =
+    search.trim() !== "" ||
+    subject !== "All Subjects" ||
+    fileType !== "All Files" ||
+    sortBy !== "newest";
+
+  const subjectTotal = Math.max(0, subjects.length - 1);
+
   return (
-    <div className="app">
-      <TopBar />
+    <div className="app-shell">
+      <TopBar
+        session={session}
+        userRole={userRole}
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+      />
 
       <main className="workspace">
         <Sidebar
           subjects={subjects}
           subject={subject}
           setSubject={setSubject}
+          subjectCounts={subjectCounts}
+          isOpen={sidebarOpen}
+          onClose={() => setSidebarOpen(false)}
         />
 
         <section className="content">
-          <div className="account-bar">
-            <span>{session.user.email}</span>
-            <button onClick={handleSignOut}>Sign out</button>
-          </div>
+          <header className="page-header">
+            <div className="page-header-copy">
+              <p className="label">YOUR STUDY MATERIAL</p>
+              <h1>Resource Library</h1>
+              <p className="description">
+                Find notes, presentations, and useful study resources.
+              </p>
+            </div>
 
-          <p className="label">YOUR STUDY MATERIAL</p>
-          <h1>Resource Library</h1>
-
-          <p className="description">
-            Find notes, presentations, and useful study resources.
-          </p>
+            <div className="page-header-summary">
+              <span>{resourceList.length} total resources</span>
+              <span className="summary-divider" aria-hidden="true">
+                &middot;
+              </span>
+              <span>{subjectTotal} subjects</span>
+            </div>
+          </header>
 
           {userRole === "facilitator" && (
-            <>
-              <GoogleDriveConnect
-                session={session}
-                userRole={userRole}
-              />
+            <GoogleDriveConnect
+              session={session}
+              userRole={userRole}
+            />
+          )}
 
-              <UploadForm addResource={addResource} />
-            </>
+          {canUploadResource && (
+            <UploadForm addResource={addResource} />
           )}
 
           {errorMessage && (
@@ -388,16 +430,42 @@ function App() {
           )}
 
           <div className="filters">
-            <input
-              type="text"
-              placeholder="Search resources..."
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
+            <div className="search-field">
+              <svg
+                className="search-icon"
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <circle
+                  cx="7.2"
+                  cy="7.2"
+                  r="4.7"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                />
+                <path
+                  d="M10.7 10.7L13.5 13.5"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                  strokeLinecap="round"
+                />
+              </svg>
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search resources..."
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
 
             <select
               value={fileType}
               onChange={(event) => setFileType(event.target.value)}
+              aria-label="Filter by file type"
             >
               <option value="All Files">All Files</option>
               <option value="PDF">PDF</option>
@@ -416,12 +484,31 @@ function App() {
           </div>
 
           {loadingResources ? (
-            <p>Loading resources...</p>
+            <div className="resource-list">
+              <p className="status-text">Loading resources...</p>
+            </div>
           ) : (
             <>
-              <p className="count">
-                {sortedResources.length} resources
-              </p>
+              <div className="list-toolbar">
+                <p className="count">
+                  {sortedResources.length} resources
+                </p>
+
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    className="reset-inline-button"
+                    onClick={() => {
+                      setSearch("");
+                      setSubject("All Subjects");
+                      setFileType("All Files");
+                      setSortBy("newest");
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
 
               <div className="resource-list">
                 {sortedResources.length > 0 ? (
@@ -433,14 +520,57 @@ function App() {
                       session={session}
                     />
                   ))
+                ) : resourceList.length === 0 ? (
+                  <div className="empty-state">
+                    <h3>No resources uploaded yet</h3>
+                    <p>
+                      {canUploadResource
+                        ? "Use the upload form above to share the first PDF, PPT, or PPTX study material."
+                        : "Study materials uploaded by your facilitators and teachers will appear here."}
+                    </p>
+
+                    {canUploadResource && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const titleInput = document.getElementById(
+                            "resource-title-input"
+                          );
+                          titleInput?.focus();
+                        }}
+                      >
+                        Upload first resource
+                      </button>
+                    )}
+                  </div>
+                ) : subject !== "All Subjects" &&
+                  search.trim() === "" &&
+                  fileType === "All Files" ? (
+                  <div className="empty-state">
+                    <h3>No resources in {subject}</h3>
+                    <p>
+                      There are currently no study materials filed under this
+                      subject.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => setSubject("All Subjects")}
+                    >
+                      View all subjects
+                    </button>
+                  </div>
                 ) : (
                   <div className="empty-state">
                     <h3>No resources found</h3>
                     <p>
-                      Try another search or change your filters.
+                      {search.trim()
+                        ? `No resources matched "${search.trim()}". Try another search or adjust your filters.`
+                        : "Try another search or change your filters."}
                     </p>
 
                     <button
+                      type="button"
                       onClick={() => {
                         setSearch("");
                         setSubject("All Subjects");

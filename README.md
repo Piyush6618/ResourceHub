@@ -28,10 +28,10 @@
 
 > **60-Second Executive / Presentation Summary:**
 >
-> **ResourceHub** is a full-stack academic resource management platform designed around two user roles: **Facilitators (Teachers)** and **Students**.
+> **ResourceHub** is a full-stack academic resource management platform designed around three user roles: **Facilitators**, **Teachers**, and **Students**.
 >
-> 1. **Authentication & Role Resolution:** When a user signs in via **Supabase Auth**, the React frontend queries the PostgreSQL `profiles` table to verify their role (`facilitator` or `student`) and dynamically adapts the UI.
-> 2. **Facilitator Capabilities:** Facilitators can upload `PDF`, `PPT`, and `PPTX` study materials (validated up to **20 MB**) to a private **Supabase Storage** bucket and link their Google Drive account via a hardened **OAuth 2.0** flow.
+> 1. **Authentication & Role Resolution:** When a user signs in via **Supabase Auth**, the React frontend queries the PostgreSQL `profiles` table to verify their role (`facilitator`, `teacher`, or `student`) and dynamically adapts the UI.
+> 2. **Facilitator & Teacher Capabilities:** Both Facilitators and Teachers can upload `PDF`, `PPT`, and `PPTX` study materials (validated up to **20 MB**) to a private **Supabase Storage** bucket. Facilitators can additionally link their Google Drive account via a hardened **OAuth 2.0** flow to power presentation conversions.
 > 3. **Student Capabilities:** Students can search resources in real time, filter by dynamically generated **Subjects** or **File Types**, sort by **Newest** or **Most Liked**, bookmark/like materials, download files, and preview documents directly in the browser.
 > 4. **On-the-Fly PPT/PPTX-to-PDF Conversion Engine:** Because web browsers cannot natively render PowerPoint files (`.ppt` / `.pptx`), our serverless backend (`/api/google/preview.js`) securely downloads the presentation from Supabase Storage, temporarily imports and converts it into Google Slides using the uploader's stored OAuth 2.0 refresh token, exports it as a `PDF` stream back to the browser modal, and **immediately deletes the temporary file from Google Drive inside a `finally` block**.
 
@@ -199,7 +199,7 @@ Create the following tables in your Supabase PostgreSQL database and enable Row 
 
 | Table / Bucket | Purpose | Key Columns |
 | :--- | :--- | :--- |
-| **`profiles`** | Stores user metadata and role | `id` (UUID, PK), `display_name`, `designation`, `role` (`'student'` \| `'facilitator'`) |
+| **`profiles`** | Stores user metadata and role | `id` (UUID, PK), `display_name`, `designation`, `role` (`'student'` \| `'facilitator'` \| `'teacher'`) |
 | **`resources`** | Stores uploaded resource metadata | `id` (UUID, PK), `title`, `subject`, `file_type`, `file_name`, `file_path`, `owner_id`, `created_at` |
 | **`resource_likes`** | Tracks user likes per resource | `resource_id` (UUID, FK), `user_id` (UUID, FK) |
 | **`google_drive_tokens`** | Stores facilitator OAuth tokens | `user_id` (UUID, PK), `refresh_token`, `updated_at` |
