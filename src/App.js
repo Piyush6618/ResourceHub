@@ -3,6 +3,7 @@ import "./App.css";
 
 import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
+import SubjectChips from "./components/SubjectChips";
 import ResourceRow from "./components/ResourceRow";
 import UploadForm from "./components/UploadForm";
 import AuthForm from "./components/AuthForm";
@@ -505,7 +506,6 @@ function App() {
     setErrorMessage("");
 
     // Step 1: Database-First deletion (transactional source of truth)
-    // In Phase 2.1, a BEFORE DELETE trigger enqueues item.filePath into storage_cleanup_queue
     const { error: dbError } = await supabase
       .from("resources")
       .delete()
@@ -643,21 +643,32 @@ function App() {
         <section className="content">
           <header className="page-header">
             <div className="page-header-copy">
-              <p className="label">COMMUNITY STUDY PLATFORM</p>
+              <span className="library-sublabel">COMMUNITY REPOSITORY</span>
               <h1>Resource Library</h1>
               <p className="description">
-                Share, preview, discuss, and improve study resources across every subject.
+                Browse, preview, discuss, and suggest improvements for peer-reviewed academic resources.
               </p>
             </div>
 
             <div className="page-header-summary">
-              <span>{resourceList.length} total resources</span>
-              <span className="summary-divider" aria-hidden="true">
-                &middot;
-              </span>
-              <span>{subjectTotal} subjects</span>
+              <div className="stat-pill">
+                <span className="stat-pill-count">{resourceList.length}</span>
+                <span className="stat-pill-label">resources</span>
+              </div>
+              <div className="stat-pill">
+                <span className="stat-pill-count">{subjectTotal}</span>
+                <span className="stat-pill-label">subjects</span>
+              </div>
             </div>
           </header>
+
+          {/* Horizontally scrollable subject chips for quick 1-tap filtering on mobile / tablet */}
+          <SubjectChips
+            subjects={subjects}
+            activeSubject={subject}
+            onSelectSubject={setSubject}
+            subjectCounts={subjectCounts}
+          />
 
           {isSuspended && (
             <div className="suspended-banner" role="alert">
@@ -680,7 +691,8 @@ function App() {
             </p>
           )}
 
-          <div className="filters">
+          {/* Responsive Search & Filters Toolbar */}
+          <div className="filters-toolbar">
             <div className="search-field">
               <svg
                 className="search-icon"
@@ -710,39 +722,92 @@ function App() {
                 placeholder="Search resources..."
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
+                aria-label="Search resources"
               />
+              {search && (
+                <button
+                  type="button"
+                  className="search-clear-button"
+                  onClick={() => setSearch("")}
+                  aria-label="Clear search input"
+                >
+                  &times;
+                </button>
+              )}
             </div>
 
-            <select
-              value={fileType}
-              onChange={(event) => setFileType(event.target.value)}
-              aria-label="Filter by file type"
-            >
-              <option value="All Files">All Files</option>
-              <option value="PDF">PDF</option>
-              <option value="PPT">PPT</option>
-              <option value="PPTX">PPTX</option>
-            </select>
+            <div className="filters-selectors-row">
+              <div className="select-wrapper">
+                <select
+                  value={fileType}
+                  onChange={(event) => setFileType(event.target.value)}
+                  aria-label="Filter by file type"
+                >
+                  <option value="All Files">All Files</option>
+                  <option value="PDF">PDF</option>
+                  <option value="PPT">PPT</option>
+                  <option value="PPTX">PPTX</option>
+                </select>
+                <svg
+                  className="select-chevron"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2.5 4.5L6 8L9.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
 
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value)}
-              aria-label="Sort resources"
-            >
-              <option value="newest">Newest first</option>
-              <option value="mostLiked">Most liked</option>
-            </select>
+              <div className="select-wrapper">
+                <select
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value)}
+                  aria-label="Sort resources"
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="mostLiked">Most liked</option>
+                </select>
+                <svg
+                  className="select-chevron"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 12 12"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2.5 4.5L6 8L9.5 4.5"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            </div>
           </div>
 
           {loadingResources ? (
             <div className="resource-list">
-              <p className="status-text">Loading resources...</p>
+              <div className="loading-state-box">
+                <span className="btn-spinner" aria-hidden="true" />
+                <p className="status-text">Loading resources...</p>
+              </div>
             </div>
           ) : (
             <>
               <div className="list-toolbar">
                 <p className="count">
-                  {sortedResources.length} resources
+                  {sortedResources.length}{" "}
+                  {sortedResources.length === 1 ? "resource" : "resources"} found
                 </p>
 
                 {hasActiveFilters && (
@@ -756,7 +821,7 @@ function App() {
                       setSortBy("newest");
                     }}
                   >
-                    Clear filters
+                    Clear all filters
                   </button>
                 )}
               </div>
@@ -780,10 +845,13 @@ function App() {
                   ))
                 ) : resourceList.length === 0 ? (
                   <div className="empty-state">
+                    <div className="empty-state-icon" aria-hidden="true">
+                      📚
+                    </div>
                     <h3>No resources uploaded yet</h3>
                     <p>
                       {canUploadResource
-                        ? "Use the upload form above to share the first PDF, PPT, or PPTX study material."
+                        ? "Use the upload form above to share the first PDF, PPT, or PPTX study material with the community."
                         : "Community study materials will appear here once uploaded."}
                     </p>
 
@@ -805,6 +873,9 @@ function App() {
                   search.trim() === "" &&
                   fileType === "All Files" ? (
                   <div className="empty-state">
+                    <div className="empty-state-icon" aria-hidden="true">
+                      📂
+                    </div>
                     <h3>No resources in {subject}</h3>
                     <p>
                       There are currently no study materials filed under this
@@ -820,11 +891,14 @@ function App() {
                   </div>
                 ) : (
                   <div className="empty-state">
-                    <h3>No resources found</h3>
+                    <div className="empty-state-icon" aria-hidden="true">
+                      🔍
+                    </div>
+                    <h3>No matching resources</h3>
                     <p>
                       {search.trim()
-                        ? `No resources matched "${search.trim()}". Try another search or adjust your filters.`
-                        : "Try another search or change your filters."}
+                        ? `No resources matched "${search.trim()}". Try adjusting your search query or filters.`
+                        : "No resources matched your current filter selection."}
                     </p>
 
                     <button

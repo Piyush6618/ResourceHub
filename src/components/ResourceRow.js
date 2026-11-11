@@ -2,6 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { normalizeSubjectName } from "../utils/fileValidation";
 
+function getUploaderInitials(name) {
+  const parts = String(name || "U")
+    .trim()
+    .split(/[\s._@-]+/)
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return parts[0] ? parts[0].slice(0, 2).toUpperCase() : "U";
+}
+
 function ResourceRow({
   item,
   likeResource,
@@ -20,6 +31,12 @@ function ResourceRow({
   const [downloading, setDownloading] = useState(false);
   const [liking, setLiking] = useState(false);
 
+  // More actions menu state (for mobile / tablet)
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
+  const moreActionsRef = useRef(null);
+  const moreActionsTriggerRef = useRef(null);
+
+  // Edit modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTitle, setEditTitle] = useState(item.title || "");
   const [editSubject, setEditSubject] = useState(item.subject || "");
@@ -27,8 +44,11 @@ function ResourceRow({
     item.description || ""
   );
   const [savingEdit, setSavingEdit] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [editError, setEditError] = useState("");
+
+  // Delete confirmation modal state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const pptxContainerRef = useRef(null);
   const pptxBufferRef = useRef(null);
@@ -58,19 +78,41 @@ function ResourceRow({
     };
   }, [previewUrl]);
 
+  // Handle ESC key for preview, edit, and delete dialogs
   useEffect(() => {
-    if (!showPreview) return;
-
     function handleKeyDown(event) {
       if (event.key === "Escape") {
-        closePreview();
+        if (showPreview) closePreview();
+        if (showEditModal) setShowEditModal(false);
+        if (showDeleteConfirm) setShowDeleteConfirm(false);
+        if (moreActionsOpen) setMoreActionsOpen(false);
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showPreview, closePreview]);
+  }, [showPreview, showEditModal, showDeleteConfirm, moreActionsOpen, closePreview]);
 
+  // Click outside for More Actions menu
+  useEffect(() => {
+    if (!moreActionsOpen) return;
+
+    function handleClickOutside(event) {
+      if (
+        moreActionsRef.current &&
+        !moreActionsRef.current.contains(event.target) &&
+        moreActionsTriggerRef.current &&
+        !moreActionsTriggerRef.current.contains(event.target)
+      ) {
+        setMoreActionsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [moreActionsOpen]);
+
+  // PPTX Preview renderer
   useEffect(() => {
     if (!showPreview || previewMode !== "pptx" || !pptxBufferRef.current) {
       return;
@@ -102,7 +144,6 @@ function ResourceRow({
 
         if (cancelled) return;
 
-        // Sanitize any raw HTML tags that pptx-preview could have injected into text spans
         const scripts = container.querySelectorAll(
           "script, iframe, object, embed"
         );
@@ -228,7 +269,8 @@ function ResourceRow({
     }
   }
 
-  async function handleLikeClick() {
+  async function handleLikeClick(event) {
+    if (event) event.stopPropagation();
     if (liking || isSuspended) return;
     setLiking(true);
     try {
@@ -238,7 +280,9 @@ function ResourceRow({
     }
   }
 
-  function openEditModal() {
+  function openEditModal(event) {
+    if (event) event.stopPropagation();
+    setMoreActionsOpen(false);
     setEditTitle(item.title || "");
     setEditSubject(item.subject || "");
     setEditDescription(item.description || "");
@@ -278,12 +322,19 @@ function ResourceRow({
     setShowEditModal(false);
   }
 
-  async function handleDeleteClick() {
+  function triggerDeletePrompt(event) {
+    if (event) event.stopPropagation();
+    setMoreActionsOpen(false);
+    setShowDeleteConfirm(true);
+  }
+
+  async function handleConfirmDelete() {
     if (!onDeleteResource || deleting) return;
 
     setDeleting(true);
     try {
       await onDeleteResource(item);
+      setShowDeleteConfirm(false);
     } finally {
       setDeleting(false);
     }
@@ -305,6 +356,9 @@ function ResourceRow({
       ? "file-icon file-icon-ppt"
       : "file-icon";
 
+  const uploaderName = item.uploaderName || item.uploader || "ResourceHub user";
+  const uploaderInitials = getUploaderInitials(uploaderName);
+
   return (
     <>
       <article
@@ -312,8 +366,142 @@ function ResourceRow({
         onClick={previewFile}
         onKeyDown={handleRowKeyDown}
         tabIndex={0}
+        aria-label={`${item.title}, ${normalizedType} file`}
       >
-        <span className={badgeClass} aria-label={`${normalizedType} file`}>
+        {/* Mobile Top Header (Visible on mobile cards) */}
+        <div className="mobile-card-topbar">
+          <div className="mobile-card-badges">
+            <span className={badgeClass} aria-label={`${normalizedType} file`}>
+              <svg
+                className="file-icon-glyph"
+                width="11"
+                height="11"
+                viewBox="0 0 12 12"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2.5 1.5H7.5L9.5 3.5V10.5H2.5V1.5Z"
+                  stroke="currentColor"
+                  strokeWidth="1.2"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>{normalizedType}</span>
+            </span>
+            <span className="subject-pill">{item.subject}</span>
+          </div>
+
+          <div
+            className="mobile-card-top-actions"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={item.likedByMe ? "like-button liked" : "like-button"}
+              onClick={handleLikeClick}
+              disabled={liking || isSuspended}
+              aria-label={item.likedByMe ? "Unlike resource" : "Like resource"}
+            >
+              <span aria-hidden="true">{item.likedByMe ? "♥" : "♡"}</span>
+              <span className="like-count">{item.likes}</span>
+            </button>
+
+            {/* Mobile More Actions Trigger */}
+            <div className="more-actions-container">
+              <button
+                ref={moreActionsTriggerRef}
+                type="button"
+                className="more-actions-button"
+                onClick={() => setMoreActionsOpen(!moreActionsOpen)}
+                aria-expanded={moreActionsOpen}
+                aria-label={`More actions for ${item.title}`}
+              >
+                &middot;&middot;&middot;
+              </button>
+
+              {moreActionsOpen && (
+                <div
+                  ref={moreActionsRef}
+                  className="more-actions-dropdown"
+                  role="menu"
+                >
+                  {onOpenDiscussion && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onOpenDiscussion(item, "comments");
+                        }}
+                      >
+                        Discuss
+                        {typeof item.commentsCount === "number" &&
+                        item.commentsCount > 0
+                          ? ` (${item.commentsCount})`
+                          : ""}
+                      </button>
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onOpenDiscussion(item, "suggestions");
+                        }}
+                      >
+                        Suggest improvement
+                      </button>
+
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item"
+                        onClick={() => {
+                          setMoreActionsOpen(false);
+                          onOpenDiscussion(item, "report");
+                        }}
+                      >
+                        Report issue
+                      </button>
+                    </>
+                  )}
+
+                  {canManageResource && (
+                    <>
+                      <div className="dropdown-divider" />
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item"
+                        onClick={openEditModal}
+                      >
+                        Edit resource
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="dropdown-item dropdown-item-danger"
+                        onClick={triggerDeletePrompt}
+                      >
+                        Delete resource
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Desktop File Icon Badge (Hidden on mobile cards) */}
+        <span
+          className={`desktop-badge ${badgeClass}`}
+          aria-label={`${normalizedType} file`}
+        >
           <svg
             className="file-icon-glyph"
             width="11"
@@ -332,18 +520,25 @@ function ResourceRow({
           <span>{normalizedType}</span>
         </span>
 
+        {/* Resource Body / Meta */}
         <div className="resource-info">
           <div className="resource-title-line">
             <h3 title={item.title}>{item.title}</h3>
-            <span className="subject-pill">{item.subject}</span>
+            <span className="desktop-subject-pill subject-pill">
+              {item.subject}
+            </span>
           </div>
 
+          {item.description ? (
+            <p className="resource-description-snippet">{item.description}</p>
+          ) : null}
+
           <p className="resource-meta">
+            <span className="uploader-avatar-chip" aria-hidden="true">
+              {uploaderInitials}
+            </span>
             <span className="resource-uploader">
-              Uploaded by{" "}
-              <strong>
-                {item.uploaderName || item.uploader || "ResourceHub user"}
-              </strong>
+              Uploaded by <strong>{uploaderName}</strong>
               {item.designation ? (
                 <span className="uploader-designation">
                   {" "}
@@ -358,8 +553,9 @@ function ResourceRow({
           </p>
         </div>
 
+        {/* Desktop / Tablet Resource Actions */}
         <div
-          className="resource-actions"
+          className="resource-actions desktop-actions"
           onClick={(event) => event.stopPropagation()}
         >
           <button
@@ -377,7 +573,7 @@ function ResourceRow({
             <>
               <button
                 type="button"
-                className="preview-button"
+                className="action-button"
                 onClick={() => onOpenDiscussion(item, "comments")}
                 aria-label={`Discuss ${item.title}`}
               >
@@ -390,7 +586,7 @@ function ResourceRow({
 
               <button
                 type="button"
-                className="preview-button"
+                className="action-button"
                 onClick={() => onOpenDiscussion(item, "suggestions")}
                 aria-label={`Suggest improvement for ${item.title}`}
               >
@@ -401,7 +597,7 @@ function ResourceRow({
 
           <button
             type="button"
-            className="preview-button"
+            className="action-button"
             onClick={previewFile}
           >
             Preview
@@ -409,7 +605,7 @@ function ResourceRow({
 
           <button
             type="button"
-            className="download-button"
+            className="action-button action-button-primary"
             onClick={downloadFile}
             disabled={downloading}
           >
@@ -420,7 +616,7 @@ function ResourceRow({
             <>
               <button
                 type="button"
-                className="preview-button"
+                className="action-button"
                 onClick={openEditModal}
                 aria-label={`Edit ${item.title}`}
               >
@@ -429,8 +625,8 @@ function ResourceRow({
 
               <button
                 type="button"
-                className="preview-button danger-link"
-                onClick={handleDeleteClick}
+                className="action-button danger-link"
+                onClick={triggerDeletePrompt}
                 disabled={deleting}
                 aria-label={`Delete ${item.title}`}
               >
@@ -439,8 +635,67 @@ function ResourceRow({
             </>
           )}
         </div>
+
+        {/* Mobile Bottom Action Bar (1-click touch targets) */}
+        <div
+          className="mobile-card-bottombar"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="mobile-card-btn preview-card-btn"
+            onClick={previewFile}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 3C4.5 3 1.5 8 1.5 8C1.5 8 4.5 13 8 13C11.5 13 14.5 8 14.5 8C14.5 8 11.5 3 8 3Z"
+                stroke="currentColor"
+                strokeWidth="1.3"
+              />
+              <circle
+                cx="8"
+                cy="8"
+                r="2.5"
+                stroke="currentColor"
+                strokeWidth="1.3"
+              />
+            </svg>
+            Preview
+          </button>
+
+          <button
+            type="button"
+            className="mobile-card-btn download-card-btn"
+            onClick={downloadFile}
+            disabled={downloading}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 13.5H13.5"
+                stroke="currentColor"
+                strokeWidth="1.3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {downloading ? "Saving..." : "Download"}
+          </button>
+        </div>
       </article>
 
+      {/* Preview Modal */}
       {showPreview && (
         <div className="preview-overlay" onClick={closePreview}>
           <section
@@ -453,7 +708,7 @@ function ResourceRow({
             <header className="preview-header">
               <div className="preview-header-meta">
                 <span className={badgeClass}>{normalizedType}</span>
-                <div>
+                <div className="preview-header-titles">
                   <h2>{item.title}</h2>
                   <span>{item.fileName || item.title}</span>
                 </div>
@@ -463,7 +718,7 @@ function ResourceRow({
                 {onOpenDiscussion && (
                   <button
                     type="button"
-                    className="preview-button"
+                    className="action-button desktop-only-btn"
                     onClick={() => {
                       closePreview();
                       onOpenDiscussion(item, "report");
@@ -494,6 +749,7 @@ function ResourceRow({
             <div className="preview-content">
               {previewLoading ? (
                 <div className="preview-loading-state">
+                  <span className="btn-spinner" aria-hidden="true" />
                   <p className="status-text">Preparing preview...</p>
                 </div>
               ) : previewMode === "pdf" && previewUrl ? (
@@ -510,6 +766,9 @@ function ResourceRow({
                 />
               ) : (
                 <div className="preview-message">
+                  <div className="fallback-card-icon" aria-hidden="true">
+                    📄
+                  </div>
                   <h3>Direct download available</h3>
                   <p>
                     {previewError ||
@@ -527,7 +786,7 @@ function ResourceRow({
                     {onOpenDiscussion && (
                       <button
                         type="button"
-                        className="preview-button"
+                        className="secondary-button"
                         onClick={() => {
                           closePreview();
                           onOpenDiscussion(item, "report");
@@ -544,6 +803,7 @@ function ResourceRow({
         </div>
       )}
 
+      {/* Edit Modal */}
       {showEditModal && (
         <div
           className="preview-overlay"
@@ -610,12 +870,12 @@ function ResourceRow({
                 >
                   Description (optional)
                 </label>
-                <input
+                <textarea
                   id={`edit-description-${item.id}`}
-                  type="text"
                   value={editDescription}
                   onChange={(event) => setEditDescription(event.target.value)}
                   maxLength={1000}
+                  rows={3}
                 />
               </div>
 
@@ -642,6 +902,65 @@ function ResourceRow({
                 </button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div
+          className="preview-overlay"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <section
+            className="dialog-modal dialog-modal-compact"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Confirm delete: ${item.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="preview-header">
+              <div>
+                <h2>Delete Resource</h2>
+                <span>Permanent file and database removal</span>
+              </div>
+              <button
+                type="button"
+                className="preview-close"
+                onClick={() => setShowDeleteConfirm(false)}
+                aria-label="Close delete confirmation"
+              >
+                &times;
+              </button>
+            </header>
+
+            <div className="dialog-body">
+              <p className="confirmation-warning-text">
+                Are you sure you want to delete <strong>{item.title}</strong>?
+                This action is permanent and will remove the file from storage
+                as well as all associated comments and suggestions.
+              </p>
+
+              <div className="dialog-footer">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="upload-submit-button danger-button"
+                  onClick={handleConfirmDelete}
+                  disabled={deleting}
+                  aria-label={`Confirm delete ${item.title}`}
+                >
+                  {deleting ? "Deleting..." : "Confirm delete"}
+                </button>
+              </div>
+            </div>
           </section>
         </div>
       )}

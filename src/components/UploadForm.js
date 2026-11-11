@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   normalizeSubjectName,
   validateUploadFile
@@ -22,6 +22,8 @@ function UploadForm({ addResource, existingSubjects = [] }) {
   const [dragActive, setDragActive] = useState(false);
   const [feedback, setFeedback] = useState({ type: "", text: "" });
 
+  const fileInputRef = useRef(null);
+
   function handleFileChange(selectedFile) {
     setFeedback({ type: "", text: "" });
     setFile(selectedFile || null);
@@ -43,6 +45,13 @@ function UploadForm({ addResource, existingSubjects = [] }) {
     const droppedFile = event.dataTransfer?.files?.[0];
     if (droppedFile) {
       handleFileChange(droppedFile);
+    }
+  }
+
+  function handleRemoveFile() {
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   }
 
@@ -85,6 +94,9 @@ function UploadForm({ addResource, existingSubjects = [] }) {
         setTitle("");
         setSubject("");
         setFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
         event.target.reset();
         setFeedback({
           type: "success",
@@ -106,10 +118,13 @@ function UploadForm({ addResource, existingSubjects = [] }) {
   );
 
   return (
-    <form className="upload-form" onSubmit={handleSubmit}>
+    <section className="upload-form-card" aria-labelledby="upload-form-heading">
       <div className="upload-form-header">
-        <div>
-          <h2>Add a resource</h2>
+        <div className="upload-header-copy">
+          <div className="upload-title-row">
+            <h2 id="upload-form-heading">Add a resource</h2>
+            <span className="upload-pill-tag">Community Upload</span>
+          </div>
           <p className="upload-spec">
             Supported formats: PDF, PPT, PPTX &middot; Maximum size: 20 MB
           </p>
@@ -120,17 +135,18 @@ function UploadForm({ addResource, existingSubjects = [] }) {
           className="upload-collapse-button"
           onClick={() => setCollapsed(!collapsed)}
           aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand upload form" : "Collapse upload form"}
         >
-          {collapsed ? "Expand" : "Collapse"}
+          {collapsed ? "Expand Form" : "Collapse"}
         </button>
       </div>
 
       {!collapsed && (
-        <>
+        <form className="upload-form-body" onSubmit={handleSubmit}>
           <div className="upload-form-grid">
-            <div className="upload-field">
+            <div className="upload-field title-field">
               <label className="field-label" htmlFor="resource-title-input">
-                Title
+                Resource Title
               </label>
               <input
                 id="resource-title-input"
@@ -143,7 +159,7 @@ function UploadForm({ addResource, existingSubjects = [] }) {
               />
             </div>
 
-            <div className="upload-field">
+            <div className="upload-field subject-field">
               <label className="field-label" htmlFor="resource-subject-input">
                 Subject
               </label>
@@ -177,53 +193,96 @@ function UploadForm({ addResource, existingSubjects = [] }) {
               onDrop={handleDrop}
             >
               <label className="field-label" htmlFor="resource-file-input">
-                File
+                File Attachment
               </label>
-              <input
-                id="resource-file-input"
-                type="file"
-                accept=".pdf,.ppt,.pptx"
-                onChange={(event) =>
-                  handleFileChange(event.target.files[0] || null)
-                }
-                required={!file}
-              />
-            </div>
-
-            <div className="upload-submit-cell">
-              <button
-                type="submit"
-                className="upload-submit-button"
-                disabled={uploading}
-              >
-                {uploading ? "Uploading..." : "Add resource"}
-              </button>
+              <div className="file-input-wrapper">
+                <input
+                  ref={fileInputRef}
+                  id="resource-file-input"
+                  type="file"
+                  accept=".pdf,.ppt,.pptx"
+                  onChange={(event) =>
+                    handleFileChange(event.target.files[0] || null)
+                  }
+                  required={!file}
+                />
+              </div>
             </div>
           </div>
 
           {file && (
-            <div className="selected-file-bar">
-              <span className="selected-file-name">{file.name}</span>
-              <span className="selected-file-size">
-                {formatFileSize(file.size)}
-              </span>
+            <div className="selected-file-card" role="status">
+              <div className="selected-file-info">
+                <svg
+                  className="selected-file-icon"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 2.5C3 1.95 3.45 1.5 4 1.5H9.5L13 5V13.5C13 14.05 12.55 14.5 12 14.5H4C3.45 14.5 3 14.05 3 13.5V2.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                  <path
+                    d="M9.5 1.5V5H13"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                </svg>
+                <div className="selected-file-meta">
+                  <span className="selected-file-name">{file.name}</span>
+                  <span className="selected-file-size">
+                    {formatFileSize(file.size)}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="remove-file-button"
+                onClick={handleRemoveFile}
+                aria-label="Remove selected file"
+              >
+                &times;
+              </button>
             </div>
           )}
 
           {feedback.text && (
-            <p
+            <div
               className={
                 feedback.type === "success"
                   ? "upload-feedback upload-feedback-success"
                   : "upload-feedback upload-feedback-error"
               }
+              role={feedback.type === "error" ? "alert" : "status"}
             >
               {feedback.text}
-            </p>
+            </div>
           )}
-        </>
+
+          <div className="upload-actions-bar">
+            <button
+              type="submit"
+              className="upload-submit-button"
+              disabled={uploading}
+            >
+              {uploading ? (
+                <span className="spinner-label">
+                  <span className="btn-spinner" aria-hidden="true" />
+                  Uploading...
+                </span>
+              ) : (
+                "Add resource"
+              )}
+            </button>
+          </div>
+        </form>
       )}
-    </form>
+    </section>
   );
 }
 

@@ -323,6 +323,10 @@ describe("ResourceHub Universal Community Platform UI & Access Control", () => {
       screen.getByRole("button", { name: /delete my algorithms cheat sheet/i })
     );
 
+    fireEvent.click(
+      screen.getByRole("button", { name: /confirm delete/i })
+    );
+
     await waitFor(() => {
       expect(mockResourceDeleteEq).toHaveBeenCalledWith("id", "own-res");
       expect(mockRemove).toHaveBeenCalledWith(["user-123/algo.pdf"]);
@@ -427,11 +431,143 @@ describe("ResourceHub Universal Community Platform UI & Access Control", () => {
     });
 
     // Legacy PPT preview shows fallback download card
-    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    const previewButtons = screen.getAllByRole("button", { name: /^preview$/i });
+    fireEvent.click(previewButtons[0]);
     await waitFor(() => {
       expect(
         screen.getByText(/legacy \.ppt presentations use a binary format/i)
       ).toBeInTheDocument();
     });
+  });
+
+  test("responsive mobile account dropdown menu toggles and shows navigation options", async () => {
+    setupMockRole("admin");
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /resource library/i })).toBeInTheDocument();
+    });
+
+    const mobileMenuTrigger = screen.getByRole("button", {
+      name: /user account menu/i
+    });
+    expect(mobileMenuTrigger).toBeInTheDocument();
+
+    // Open dropdown
+    fireEvent.click(mobileMenuTrigger);
+    expect(screen.getByRole("menu", { name: /user menu/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /moderation console/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /edit profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
+
+    // Close on trigger click or Escape
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: /user menu/i })).not.toBeInTheDocument();
+  });
+
+  test("subject chips filter resources when tapped", async () => {
+    const sampleResources = [
+      {
+        id: "r1",
+        title: "Calculus III Lecture",
+        subject: "Mathematics",
+        file_name: "calc.pdf",
+        file_path: "user-123/calc.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-02T10:00:00.000Z"
+      },
+      {
+        id: "r2",
+        title: "Quantum Physics Notes",
+        subject: "Physics",
+        file_name: "physics.pdf",
+        file_path: "user-123/physics.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-01T10:00:00.000Z"
+      }
+    ];
+
+    setupMockRole("user", sampleResources);
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Calculus III Lecture")).toBeInTheDocument();
+      expect(screen.getByText("Quantum Physics Notes")).toBeInTheDocument();
+    });
+
+    // Subject chip click for "Mathematics"
+    const mathChips = screen.getAllByRole("button", { name: /mathematics/i });
+    fireEvent.click(mathChips[0]);
+
+    expect(screen.getByText("Calculus III Lecture")).toBeInTheDocument();
+    expect(screen.queryByText("Quantum Physics Notes")).not.toBeInTheDocument();
+
+    // Subject chip click for "All Subjects"
+    const allChips = screen.getAllByRole("button", { name: /all subjects/i });
+    fireEvent.click(allChips[0]);
+
+    expect(screen.getByText("Calculus III Lecture")).toBeInTheDocument();
+    expect(screen.getByText("Quantum Physics Notes")).toBeInTheDocument();
+  });
+
+  test("mobile card more actions menu displays discussion and management actions", async () => {
+    const sampleResources = [
+      {
+        id: "own-res",
+        title: "Operating Systems Deep Dive",
+        subject: "Computer Science",
+        file_name: "os.pdf",
+        file_path: "user-123/os.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-02T10:00:00.000Z"
+      }
+    ];
+
+    setupMockRole("user", sampleResources);
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Operating Systems Deep Dive")).toBeInTheDocument();
+    });
+
+    const moreActionsButton = screen.getByRole("button", {
+      name: /more actions for operating systems deep dive/i
+    });
+    expect(moreActionsButton).toBeInTheDocument();
+
+    // Open more actions menu
+    fireEvent.click(moreActionsButton);
+
+    expect(screen.getByRole("menuitem", { name: /discuss/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /suggest improvement/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /report issue/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /edit resource/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /delete resource/i })).toBeInTheDocument();
+
+    // Close on Escape
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menuitem", { name: /discuss/i })).not.toBeInTheDocument();
+  });
+
+  test("upload form can be collapsed and expanded", async () => {
+    setupMockRole("user");
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /add a resource/i })).toBeInTheDocument();
+    });
+
+    const collapseButton = screen.getByRole("button", { name: /collapse/i });
+    fireEvent.click(collapseButton);
+
+    expect(screen.queryByPlaceholderText("Resource title")).not.toBeInTheDocument();
+
+    const expandButton = screen.getByRole("button", { name: /expand/i });
+    fireEvent.click(expandButton);
+
+    expect(screen.getByPlaceholderText("Resource title")).toBeInTheDocument();
   });
 });

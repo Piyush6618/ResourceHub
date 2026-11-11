@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 function Sidebar({
   subjects,
   subject,
@@ -6,6 +8,19 @@ function Sidebar({
   isOpen = false,
   onClose
 }) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handleKeyDown(event) {
+      if (event.key === "Escape" && onClose) {
+        onClose();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   function handleSelect(item) {
     setSubject(item);
     if (onClose) {
@@ -23,11 +38,14 @@ function Sidebar({
         />
       )}
 
-      <aside className={isOpen ? "sidebar sidebar-open" : "sidebar"}>
+      <aside
+        className={isOpen ? "sidebar sidebar-open" : "sidebar"}
+        aria-label="Subjects Navigation"
+      >
         <div className="sidebar-section">
           <div className="sidebar-header">
-            <div>
-              <p className="label">Library</p>
+            <div className="sidebar-header-titles">
+              <span className="sidebar-sublabel">LIBRARY</span>
               <h3>Subjects</h3>
             </div>
 
@@ -54,12 +72,13 @@ function Sidebar({
                   type="button"
                   className={isActive ? "subject active" : "subject"}
                   onClick={() => handleSelect(item)}
+                  aria-current={isActive ? "true" : undefined}
                 >
                   <span className="subject-item-left">
                     <svg
                       className="subject-icon"
-                      width="14"
-                      height="14"
+                      width="15"
+                      height="15"
                       viewBox="0 0 16 16"
                       fill="none"
                       aria-hidden="true"
