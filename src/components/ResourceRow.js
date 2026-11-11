@@ -1,12 +1,54 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { normalizeSubjectName } from "../utils/fileValidation";
 
-function ResourceRow({ item, likeResource, session }) {
+function ResourceRow({
+  item,
+  likeResource,
+  onEditResource,
+  onDeleteResource,
+  onOpenDiscussion,
+  session,
+  userRole,
+  userStatus
+}) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [previewMode, setPreviewMode] = useState("none"); // "pdf" | "pptx" | "fallback"
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [liking, setLiking] = useState(false);
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState(item.title || "");
+  const [editSubject, setEditSubject] = useState(item.subject || "");
+  const [editDescription, setEditDescription] = useState(
+    item.description || ""
+  );
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const pptxContainerRef = useRef(null);
+  const pptxBufferRef = useRef(null);
+
+  const isSuspended = userStatus === "suspended";
+  const canManageResource =
+    !isSuspended &&
+    ((item.ownerId && item.ownerId === session?.user?.id) ||
+      userRole === "admin");
+
+  const closePreview = useCallback(() => {
+    setShowPreview(false);
+    setPreviewError("");
+    setPreviewMode("none");
+    pptxBufferRef.current = null;
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+      setPreviewUrl("");
+    }
+  }, [previewUrl]);
 
   useEffect(() => {
     return () => {
@@ -21,15 +63,66 @@ function ResourceRow({ item, likeResource, session }) {
 
     function handleKeyDown(event) {
       if (event.key === "Escape") {
-        setShowPreview(false);
-        setPreviewError("");
-        setPreviewUrl("");
+        closePreview();
       }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showPreview]);
+  }, [showPreview, closePreview]);
+
+  useEffect(() => {
+    if (!showPreview || previewMode !== "pptx" || !pptxBufferRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function renderPptxPreview() {
+      const container = pptxContainerRef.current;
+      if (!container) return;
+
+      container.innerHTML = "";
+
+      try {
+        const pptxPreviewModule = await import("pptx-preview");
+        const initFn =
+          pptxPreviewModule?.init || pptxPreviewModule?.default?.init;
+
+        if (typeof initFn !== "function") {
+          throw new Error("Presentation previewer is unavailable.");
+        }
+
+        const previewer = initFn(container, {
+          width: 840,
+          height: 480
+        });
+
+        await previewer.preview(pptxBufferRef.current);
+
+        if (cancelled) return;
+
+        // Sanitize any raw HTML tags that pptx-preview could have injected into text spans
+        const scripts = container.querySelectorAll(
+          "script, iframe, object, embed"
+        );
+        scripts.forEach((node) => node.remove());
+      } catch (_err) {
+        if (!cancelled) {
+          setPreviewMode("fallback");
+          setPreviewError(
+            "Interactive slide preview could not render this presentation. You can download the original file directly below."
+          );
+        }
+      }
+    }
+
+    renderPptxPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showPreview, previewMode]);
 
   async function downloadFile() {
     if (!item.filePath) {
@@ -67,68 +160,133 @@ function ResourceRow({ item, likeResource, session }) {
   async function previewFile() {
     setShowPreview(true);
     setPreviewError("");
-    setPreviewLoading(true);
+    setPreviewUrl("");
+    setPreviewMode("none");
+    pptxBufferRef.current = null;
 
     if (!item.filePath) {
-      setPreviewLoading(false);
+      setPreviewMode("fallback");
       setPreviewError("This file is not available in storage yet.");
       return;
     }
 
+    const normalized = String(item.type || "FILE").toUpperCase();
+
+    if (normalized === "PPT") {
+      setPreviewMode("fallback");
+      setPreviewError(
+        "Legacy .ppt presentations use a binary format that browsers cannot render directly. Download the presentation to view it in PowerPoint, Keynote, or LibreOffice."
+      );
+      return;
+    }
+
+    setPreviewLoading(true);
+
     try {
-      let fileBlob;
+      const { data, error } = await supabase.storage
+        .from("resources")
+        .download(item.filePath);
 
-      if (item.type === "PDF") {
-        const { data, error } = await supabase.storage
-          .from("resources")
-          .download(item.filePath);
+      if (error) {
+        throw new Error(error.message);
+      }
 
-        if (error) {
-          throw new Error(error.message);
+      if (normalized === "PDF") {
+        const pdfBlob =
+          data instanceof Blob && data.type === "application/pdf"
+            ? data
+            : new Blob([data], { type: "application/pdf" });
+
+        const url = URL.createObjectURL(pdfBlob);
+        setPreviewUrl(url);
+        setPreviewMode("pdf");
+      } else if (normalized === "PPTX") {
+        if (data && typeof data.arrayBuffer === "function") {
+          const buffer = await data.arrayBuffer();
+          pptxBufferRef.current = buffer;
+          setPreviewMode("pptx");
+        } else {
+          setPreviewMode("fallback");
+          setPreviewError(
+            "Slide preview is not available in this browser environment. Please download the presentation directly."
+          );
         }
-
-        fileBlob = data;
-      } else if (item.type === "PPT" || item.type === "PPTX") {
-        if (!session || !session.access_token) {
-          throw new Error("Please sign in again to preview this presentation.");
-        }
-
-        const response = await fetch(
-          `/api/google/preview?id=${encodeURIComponent(item.id)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`
-            }
-          }
-        );
-
-        if (!response.ok) {
-          const message = await response.text();
-          throw new Error(message || "Could not convert this presentation.");
-        }
-
-        fileBlob = await response.blob();
       } else {
-        throw new Error("Preview is not supported for this file type.");
+        setPreviewMode("fallback");
+        setPreviewError(
+          "In-browser preview is not supported for this file format. Please download the file directly."
+        );
       }
-
-      if (fileBlob.type && fileBlob.type !== "application/pdf") {
-        throw new Error("The server did not return a PDF preview.");
-      }
-
-      const url = URL.createObjectURL(fileBlob);
-      setPreviewUrl(url);
     } catch (error) {
-      setPreviewError(error.message || "Could not load the preview.");
+      setPreviewMode("fallback");
+      setPreviewError(
+        error.message ||
+          "Could not load the preview. You can still download the file directly."
+      );
     } finally {
       setPreviewLoading(false);
     }
   }
 
-  function closePreview() {
-    setShowPreview(false);
-    setPreviewError("");
-    setPreviewUrl("");
+  async function handleLikeClick() {
+    if (liking || isSuspended) return;
+    setLiking(true);
+    try {
+      await likeResource(item.id);
+    } finally {
+      setLiking(false);
+    }
+  }
+
+  function openEditModal() {
+    setEditTitle(item.title || "");
+    setEditSubject(item.subject || "");
+    setEditDescription(item.description || "");
+    setEditError("");
+    setShowEditModal(true);
+  }
+
+  async function handleSaveEdit(event) {
+    event.preventDefault();
+    if (!onEditResource) return;
+
+    const cleanTitle = editTitle.trim();
+    const cleanSubject = normalizeSubjectName(editSubject);
+    const cleanDescription = editDescription.trim();
+
+    if (!cleanTitle || !cleanSubject) {
+      setEditError("Title and subject are required.");
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError("");
+
+    const result = await onEditResource(item.id, {
+      title: cleanTitle,
+      subject: cleanSubject,
+      description: cleanDescription
+    });
+
+    setSavingEdit(false);
+
+    if (result?.error) {
+      setEditError(result.error);
+      return;
+    }
+
+    setShowEditModal(false);
+  }
+
+  async function handleDeleteClick() {
+    if (!onDeleteResource || deleting) return;
+
+    setDeleting(true);
+    try {
+      await onDeleteResource(item);
+    } finally {
+      setDeleting(false);
+    }
   }
 
   function handleRowKeyDown(event) {
@@ -207,12 +365,39 @@ function ResourceRow({ item, likeResource, session }) {
           <button
             type="button"
             className={item.likedByMe ? "like-button liked" : "like-button"}
-            onClick={() => likeResource(item.id)}
+            onClick={handleLikeClick}
+            disabled={liking || isSuspended}
             aria-label={item.likedByMe ? "Unlike resource" : "Like resource"}
           >
             <span aria-hidden="true">{item.likedByMe ? "♥" : "♡"}</span>
             <span className="like-count">{item.likes}</span>
           </button>
+
+          {onOpenDiscussion && (
+            <>
+              <button
+                type="button"
+                className="preview-button"
+                onClick={() => onOpenDiscussion(item, "comments")}
+                aria-label={`Discuss ${item.title}`}
+              >
+                Discuss
+                {typeof item.commentsCount === "number" &&
+                item.commentsCount > 0
+                  ? ` (${item.commentsCount})`
+                  : ""}
+              </button>
+
+              <button
+                type="button"
+                className="preview-button"
+                onClick={() => onOpenDiscussion(item, "suggestions")}
+                aria-label={`Suggest improvement for ${item.title}`}
+              >
+                Suggest
+              </button>
+            </>
+          )}
 
           <button
             type="button"
@@ -230,6 +415,29 @@ function ResourceRow({ item, likeResource, session }) {
           >
             {downloading ? "Saving..." : "Download"}
           </button>
+
+          {canManageResource && (
+            <>
+              <button
+                type="button"
+                className="preview-button"
+                onClick={openEditModal}
+                aria-label={`Edit ${item.title}`}
+              >
+                Edit
+              </button>
+
+              <button
+                type="button"
+                className="preview-button danger-link"
+                onClick={handleDeleteClick}
+                disabled={deleting}
+                aria-label={`Delete ${item.title}`}
+              >
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </>
+          )}
         </div>
       </article>
 
@@ -252,6 +460,18 @@ function ResourceRow({ item, likeResource, session }) {
               </div>
 
               <div className="preview-header-actions">
+                {onOpenDiscussion && (
+                  <button
+                    type="button"
+                    className="preview-button"
+                    onClick={() => {
+                      closePreview();
+                      onOpenDiscussion(item, "report");
+                    }}
+                  >
+                    Report issue
+                  </button>
+                )}
                 <button
                   type="button"
                   className="download-button"
@@ -276,26 +496,152 @@ function ResourceRow({ item, likeResource, session }) {
                 <div className="preview-loading-state">
                   <p className="status-text">Preparing preview...</p>
                 </div>
-              ) : previewError ? (
-                <div className="preview-message">
-                  <p>{previewError}</p>
-                  <button
-                    type="button"
-                    className="download-button"
-                    onClick={downloadFile}
-                    disabled={downloading}
-                  >
-                    Download file
-                  </button>
-                </div>
-              ) : previewUrl ? (
+              ) : previewMode === "pdf" && previewUrl ? (
                 <iframe
                   src={previewUrl}
                   title={"Preview of " + item.title}
                   className="preview-frame"
                 />
-              ) : null}
+              ) : previewMode === "pptx" ? (
+                <div
+                  ref={pptxContainerRef}
+                  className="pptx-preview-container"
+                  data-testid="pptx-preview-container"
+                />
+              ) : (
+                <div className="preview-message">
+                  <h3>Direct download available</h3>
+                  <p>
+                    {previewError ||
+                      "This file cannot be previewed directly in the browser."}
+                  </p>
+                  <div className="preview-fallback-actions">
+                    <button
+                      type="button"
+                      className="download-button"
+                      onClick={downloadFile}
+                      disabled={downloading}
+                    >
+                      {downloading ? "Saving..." : "Download file"}
+                    </button>
+                    {onOpenDiscussion && (
+                      <button
+                        type="button"
+                        className="preview-button"
+                        onClick={() => {
+                          closePreview();
+                          onOpenDiscussion(item, "report");
+                        }}
+                      >
+                        Report corrupt file
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
+          </section>
+        </div>
+      )}
+
+      {showEditModal && (
+        <div
+          className="preview-overlay"
+          onClick={() => setShowEditModal(false)}
+        >
+          <section
+            className="dialog-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Edit resource: ${item.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="preview-header">
+              <div>
+                <h2>Edit Resource</h2>
+                <span>Update title, subject, or description</span>
+              </div>
+              <button
+                type="button"
+                className="preview-close"
+                onClick={() => setShowEditModal(false)}
+                aria-label="Close edit resource modal"
+              >
+                &times;
+              </button>
+            </header>
+
+            <form className="dialog-body" onSubmit={handleSaveEdit}>
+              <div className="upload-field">
+                <label className="field-label" htmlFor={`edit-title-${item.id}`}>
+                  Title
+                </label>
+                <input
+                  id={`edit-title-${item.id}`}
+                  type="text"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  maxLength={200}
+                  required
+                />
+              </div>
+
+              <div className="upload-field">
+                <label
+                  className="field-label"
+                  htmlFor={`edit-subject-${item.id}`}
+                >
+                  Subject
+                </label>
+                <input
+                  id={`edit-subject-${item.id}`}
+                  type="text"
+                  value={editSubject}
+                  onChange={(event) => setEditSubject(event.target.value)}
+                  maxLength={80}
+                  required
+                />
+              </div>
+
+              <div className="upload-field">
+                <label
+                  className="field-label"
+                  htmlFor={`edit-description-${item.id}`}
+                >
+                  Description (optional)
+                </label>
+                <input
+                  id={`edit-description-${item.id}`}
+                  type="text"
+                  value={editDescription}
+                  onChange={(event) => setEditDescription(event.target.value)}
+                  maxLength={1000}
+                />
+              </div>
+
+              {editError && (
+                <p className="upload-feedback upload-feedback-error" role="alert">
+                  {editError}
+                </p>
+              )}
+
+              <div className="dialog-footer">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setShowEditModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="upload-submit-button"
+                  disabled={savingEdit}
+                >
+                  {savingEdit ? "Saving..." : "Save changes"}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       )}

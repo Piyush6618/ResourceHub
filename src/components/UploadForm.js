@@ -1,4 +1,8 @@
 import { useState } from "react";
+import {
+  normalizeSubjectName,
+  validateUploadFile
+} from "../utils/fileValidation";
 
 function formatFileSize(bytes) {
   if (typeof bytes !== "number" || Number.isNaN(bytes)) return "";
@@ -9,7 +13,7 @@ function formatFileSize(bytes) {
   return `${mb.toFixed(2)} MB`;
 }
 
-function UploadForm({ addResource }) {
+function UploadForm({ addResource, existingSubjects = [] }) {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [file, setFile] = useState(null);
@@ -46,7 +50,10 @@ function UploadForm({ addResource }) {
     event.preventDefault();
     setFeedback({ type: "", text: "" });
 
-    if (!title.trim() || !subject.trim() || !file) {
+    const cleanTitle = title.trim();
+    const cleanSubject = normalizeSubjectName(subject);
+
+    if (!cleanTitle || !cleanSubject || !file) {
       setFeedback({
         type: "error",
         text: "Please enter the title, subject, and select a file."
@@ -54,20 +61,11 @@ function UploadForm({ addResource }) {
       return;
     }
 
-    const extension = file.name.split(".").pop().toUpperCase();
-
-    if (!["PDF", "PPT", "PPTX"].includes(extension)) {
+    const validation = await validateUploadFile(file);
+    if (!validation.valid) {
       setFeedback({
         type: "error",
-        text: "Please select a PDF, PPT, or PPTX file."
-      });
-      return;
-    }
-
-    if (file.size > 20 * 1024 * 1024) {
-      setFeedback({
-        type: "error",
-        text: "Please select a file smaller than 20 MB."
+        text: validation.error
       });
       return;
     }
@@ -76,9 +74,10 @@ function UploadForm({ addResource }) {
 
     try {
       const success = await addResource({
-        title: title.trim(),
-        subject: subject.trim(),
-        type: extension,
+        title: cleanTitle,
+        subject: cleanSubject,
+        type: validation.extension,
+        mimeType: validation.mimeType,
         file: file
       });
 
@@ -101,6 +100,10 @@ function UploadForm({ addResource }) {
 
     setUploading(false);
   }
+
+  const canonicalSubjectOptions = existingSubjects.filter(
+    (s) => s && s !== "All Subjects"
+  );
 
   return (
     <form className="upload-form" onSubmit={handleSubmit}>
@@ -133,6 +136,7 @@ function UploadForm({ addResource }) {
                 id="resource-title-input"
                 type="text"
                 placeholder="Resource title"
+                maxLength={200}
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}
                 required
@@ -146,11 +150,20 @@ function UploadForm({ addResource }) {
               <input
                 id="resource-subject-input"
                 type="text"
+                list="resource-subject-suggestions"
                 placeholder="Subject name"
+                maxLength={80}
                 value={subject}
                 onChange={(event) => setSubject(event.target.value)}
                 required
               />
+              {canonicalSubjectOptions.length > 0 && (
+                <datalist id="resource-subject-suggestions">
+                  {canonicalSubjectOptions.map((item) => (
+                    <option key={item} value={item} />
+                  ))}
+                </datalist>
+              )}
             </div>
 
             <div

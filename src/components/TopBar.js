@@ -14,14 +14,17 @@ function TopBar({
   userRole,
   userProfile,
   onSignOut,
-  onToggleSidebar
+  onToggleSidebar,
+  onOpenProfile,
+  onOpenModeration
 }) {
-  const roleLabel =
-    userRole === "facilitator"
-      ? "Facilitator"
-      : userRole === "teacher"
-      ? "Teacher"
-      : "Student";
+  const isSuspended = userProfile?.status === "suspended";
+
+  const roleLabel = isSuspended
+    ? "Suspended"
+    : userRole === "admin"
+    ? "Admin"
+    : "Member";
 
   const initials = getInitials(
     userProfile?.display_name,
@@ -95,6 +98,26 @@ function TopBar({
                 <span className="account-email">{session.user.email}</span>
               </div>
             </div>
+
+            {userRole === "admin" && onOpenModeration && (
+              <button
+                type="button"
+                className="signout-button"
+                onClick={onOpenModeration}
+              >
+                Moderation
+              </button>
+            )}
+
+            {onOpenProfile && !isSuspended && (
+              <button
+                type="button"
+                className="signout-button"
+                onClick={onOpenProfile}
+              >
+                Edit profile
+              </button>
+            )}
 
             {onSignOut && (
               <button

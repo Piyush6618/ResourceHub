@@ -5,12 +5,13 @@ import TopBar from "./components/TopBar";
 import Sidebar from "./components/Sidebar";
 import ResourceRow from "./components/ResourceRow";
 import UploadForm from "./components/UploadForm";
-import GoogleDriveConnect from "./components/GoogleDriveConnect";
 import AuthForm from "./components/AuthForm";
+import ProfileModal from "./components/ProfileModal";
+import ResourceDiscussionModal from "./components/ResourceDiscussionModal";
+import AdminModerationModal from "./components/AdminModerationModal";
 
 import { supabase } from "./supabaseClient";
-
-const RESOURCE_UPLOAD_ROLES = ["facilitator", "teacher"];
+import { normalizeSubjectName } from "./utils/fileValidation";
 
 function App() {
   const [search, setSearch] = useState("");
@@ -27,6 +28,10 @@ function App() {
   const [authChecked, setAuthChecked] = useState(false);
   const [loadingResources, setLoadingResources] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showModerationModal, setShowModerationModal] = useState(false);
+  const [activeDiscussion, setActiveDiscussion] = useState(null);
 
   const searchInputRef = useRef(null);
 
@@ -77,21 +82,38 @@ function App() {
       setUserRole(null);
       setUserProfile(null);
 
-      const { data: profile, error: profileError } = await supabase
+      let profileResult = await supabase
         .from("profiles")
-        .select("role, display_name, designation")
+        .select("role, status, display_name, designation")
         .eq("id", session.user.id)
         .single();
 
+      if (
+        profileResult.error &&
+        String(profileResult.error.message || "").includes("status")
+      ) {
+        profileResult = await supabase
+          .from("profiles")
+          .select("role, display_name, designation")
+          .eq("id", session.user.id)
+          .single();
+      }
+
       if (!mounted) return;
 
-      if (profileError) {
+      if (profileResult.error) {
         setErrorMessage(
-          "Could not load user profile: " + profileError.message
+          "Could not load user profile: " + profileResult.error.message
         );
         setLoadingResources(false);
         return;
       }
+
+      const profile = {
+        ...profileResult.data,
+        role: profileResult.data?.role === "admin" ? "admin" : "user",
+        status: profileResult.data?.status || "active"
+      };
 
       setUserRole(profile.role);
       setUserProfile(profile);
@@ -109,45 +131,56 @@ function App() {
         return;
       }
 
+      const resourcesData = data || [];
       const ownerIds = [
-        ...new Set(data.map((item) => item.owner_id))
+        ...new Set(resourcesData.map((item) => item.owner_id).filter(Boolean))
       ];
+      const resourceIds = resourcesData.map((item) => item.id).filter(Boolean);
 
-      let profilesData = [];
+      const profilesPromise =
+        ownerIds.length > 0
+          ? supabase
+              .from("profiles")
+              .select("id, display_name, designation, role")
+              .in("id", ownerIds)
+          : Promise.resolve({ data: [], error: null });
 
-      if (ownerIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
-          .from("profiles")
-          .select("id, display_name, designation, role")
-          .in("id", ownerIds);
-
-        if (!mounted) return;
-
-        if (profilesError) {
-          setErrorMessage(
-            "Could not load uploader details: " +
-              profilesError.message
-          );
-          setLoadingResources(false);
-          return;
-        }
-
-        profilesData = profiles;
-      }
-
-      const { data: likesData, error: likesError } = await supabase
+      const baseLikesQuery = supabase
         .from("resource_likes")
         .select("resource_id, user_id");
 
+      const likesPromise =
+        resourceIds.length > 0 && typeof baseLikesQuery?.in === "function"
+          ? baseLikesQuery.in("resource_id", resourceIds)
+          : baseLikesQuery;
+
+      const [profilesResponse, likesResponse] = await Promise.all([
+        profilesPromise,
+        likesPromise
+      ]);
+
       if (!mounted) return;
 
-      if (likesError) {
-        setErrorMessage("Could not load likes: " + likesError.message);
+      if (profilesResponse?.error) {
+        setErrorMessage(
+          "Could not load uploader details: " + profilesResponse.error.message
+        );
         setLoadingResources(false);
         return;
       }
 
-      const formattedResources = data.map((item) => {
+      if (likesResponse?.error) {
+        setErrorMessage(
+          "Could not load likes: " + likesResponse.error.message
+        );
+        setLoadingResources(false);
+        return;
+      }
+
+      const profilesData = profilesResponse?.data || [];
+      const likesData = likesResponse?.data || [];
+
+      const formattedResources = resourcesData.map((item) => {
         const resourceLikes = likesData.filter(
           (like) => like.resource_id === item.id
         );
@@ -157,13 +190,18 @@ function App() {
         );
 
         const uploaderProfile = profilesData.find(
-          (profile) => profile.id === item.owner_id
+          (p) => p.id === item.owner_id
         );
+
+        const normalizedSubject =
+          normalizeSubjectName(item.subject) || "General";
 
         return {
           id: item.id,
+          ownerId: item.owner_id,
           title: item.title,
-          subject: item.subject,
+          description: item.description || "",
+          subject: normalizedSubject,
           type: item.file_type,
           uploaderName:
             uploaderProfile?.display_name || "ResourceHub user",
@@ -174,8 +212,15 @@ function App() {
             year: "numeric"
           }),
           createdAt: item.created_at,
-          likes: resourceLikes.length,
-          likedByMe: likedByMe,
+          likes:
+            typeof item.likes_count === "number"
+              ? item.likes_count
+              : resourceLikes.length,
+          commentsCount:
+            typeof item.comments_count === "number"
+              ? item.comments_count
+              : 0,
+          likedByMe,
           fileName: item.file_name,
           filePath: item.file_path
         };
@@ -207,8 +252,14 @@ function App() {
   );
 
   const filteredResources = resourceList.filter((item) => {
+    const query = search.toLowerCase();
+    const matchesSearch =
+      item.title.toLowerCase().includes(query) ||
+      item.subject.toLowerCase().includes(query) ||
+      (item.uploaderName || "").toLowerCase().includes(query);
+
     return (
-      item.title.toLowerCase().includes(search.toLowerCase()) &&
+      matchesSearch &&
       (subject === "All Subjects" || item.subject === subject) &&
       (fileType === "All Files" || item.type === fileType)
     );
@@ -222,7 +273,15 @@ function App() {
     return new Date(b.createdAt) - new Date(a.createdAt);
   });
 
+  const isSuspended = userProfile?.status === "suspended";
+  const canUploadResource = Boolean(session?.user) && !isSuspended;
+
   async function likeResource(id) {
+    if (isSuspended) {
+      setErrorMessage("Your account is currently suspended.");
+      return;
+    }
+
     const resource = resourceList.find((item) => item.id === id);
 
     if (!resource) return;
@@ -246,7 +305,7 @@ function App() {
           item.id === id
             ? {
                 ...item,
-                likes: item.likes - 1,
+                likes: Math.max(0, item.likes - 1),
                 likedByMe: false
               }
             : item
@@ -279,40 +338,66 @@ function App() {
     }
   }
 
-  const canUploadResource = RESOURCE_UPLOAD_ROLES.includes(userRole);
-
   async function addResource(newResource) {
     setErrorMessage("");
 
     if (!canUploadResource) {
-      setErrorMessage("Only facilitators and teachers can upload resources.");
+      setErrorMessage(
+        "Your account cannot upload resources at this time."
+      );
       return false;
     }
 
     const file = newResource.file;
+    const cleanSubject = normalizeSubjectName(newResource.subject);
     const safeFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const filePath =
       session.user.id + "/" + Date.now() + "-" + safeFileName;
 
+    const uploadOptions = newResource.mimeType
+      ? { contentType: newResource.mimeType, upsert: false }
+      : { upsert: false };
+
     const { error: uploadError } = await supabase.storage
       .from("resources")
-      .upload(filePath, file);
+      .upload(filePath, file, uploadOptions);
 
     if (uploadError) {
       setErrorMessage(uploadError.message);
       return false;
     }
 
+    let subjectId = null;
+    if (typeof supabase.rpc === "function") {
+      try {
+        const { data: rpcSubjectId } = await supabase.rpc(
+          "get_or_create_subject",
+          { p_name: cleanSubject }
+        );
+        if (rpcSubjectId) {
+          subjectId = rpcSubjectId;
+        }
+      } catch (_err) {
+        // Fallback if migration 002 RPC is not yet active on the database
+      }
+    }
+
+    const insertPayload = {
+      title: newResource.title.trim(),
+      subject: cleanSubject,
+      file_name: file.name,
+      file_path: filePath,
+      file_type: newResource.type,
+      owner_id: session.user.id
+    };
+
+    if (subjectId) {
+      insertPayload.subject_id = subjectId;
+    }
+
     const { data, error } = await supabase
       .from("resources")
-      .insert({
-        title: newResource.title,
-        subject: newResource.subject,
-        file_name: file.name,
-        file_path: filePath,
-        file_type: newResource.type,
-        owner_id: session.user.id
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
@@ -325,8 +410,10 @@ function App() {
     setResourceList((currentResources) => [
       {
         id: data.id,
+        ownerId: data.owner_id || session.user.id,
         title: data.title,
-        subject: data.subject,
+        description: data.description || "",
+        subject: normalizeSubjectName(data.subject) || cleanSubject,
         type: data.file_type,
         uploaderName: userProfile?.display_name || "ResourceHub user",
         designation: userProfile?.designation || "",
@@ -337,6 +424,7 @@ function App() {
         }),
         createdAt: data.created_at,
         likes: 0,
+        commentsCount: 0,
         likedByMe: false,
         fileName: data.file_name,
         filePath: data.file_path
@@ -345,6 +433,161 @@ function App() {
     ]);
 
     return true;
+  }
+
+  async function updateResource(id, { title, subject: rawSubject, description }) {
+    setErrorMessage("");
+    const cleanSubject = normalizeSubjectName(rawSubject);
+
+    let subjectId = null;
+    if (typeof supabase.rpc === "function") {
+      try {
+        const { data: rpcSubjectId } = await supabase.rpc(
+          "get_or_create_subject",
+          { p_name: cleanSubject }
+        );
+        if (rpcSubjectId) {
+          subjectId = rpcSubjectId;
+        }
+      } catch (_err) {
+        // Ignore if RPC not yet installed
+      }
+    }
+
+    const updatePayload = {
+      title: title.trim(),
+      subject: cleanSubject
+    };
+
+    if (typeof description === "string") {
+      updatePayload.description = description;
+    }
+    if (subjectId) {
+      updatePayload.subject_id = subjectId;
+    }
+
+    const updateQuery = supabase
+      .from("resources")
+      .update(updatePayload)
+      .eq("id", id);
+
+    const { error } =
+      typeof updateQuery?.select === "function"
+        ? await updateQuery.select().single()
+        : await updateQuery;
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    setResourceList((currentResources) =>
+      currentResources.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              title: updatePayload.title,
+              subject: cleanSubject,
+              description:
+                typeof description === "string"
+                  ? description
+                  : item.description
+            }
+          : item
+      )
+    );
+
+    return { error: null };
+  }
+
+  async function deleteResource(item) {
+    if (!item?.id) return;
+
+    setErrorMessage("");
+
+    // Step 1: Database-First deletion (transactional source of truth)
+    // In Phase 2.1, a BEFORE DELETE trigger enqueues item.filePath into storage_cleanup_queue
+    const { error: dbError } = await supabase
+      .from("resources")
+      .delete()
+      .eq("id", item.id);
+
+    if (dbError) {
+      setErrorMessage("Could not delete resource: " + dbError.message);
+      return;
+    }
+
+    // Step 2: Best-effort immediate Storage deletion
+    if (item.filePath) {
+      const { error: storageError } = await supabase.storage
+        .from("resources")
+        .remove([item.filePath]);
+
+      // Step 3: Acknowledge queue cleanup if Storage removal succeeded
+      if (!storageError && typeof supabase.rpc === "function") {
+        try {
+          await supabase.rpc("confirm_storage_cleanup", {
+            p_file_path: item.filePath
+          });
+        } catch (_err) {
+          // Queue entry remains for admin/scheduled reconciliation if RPC is unavailable
+        }
+      }
+    }
+
+    setResourceList((currentResources) =>
+      currentResources.filter((res) => res.id !== item.id)
+    );
+  }
+
+  async function handleSaveProfile({ display_name, designation }) {
+    if (!session?.user?.id) {
+      return { error: "Not signed in." };
+    }
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        display_name,
+        designation
+      })
+      .eq("id", session.user.id);
+
+    if (error) {
+      return { error: error.message };
+    }
+
+    setUserProfile((prev) => ({
+      ...prev,
+      display_name,
+      designation
+    }));
+
+    setResourceList((currentResources) =>
+      currentResources.map((item) =>
+        item.ownerId === session.user.id
+          ? {
+              ...item,
+              uploaderName: display_name,
+              designation
+            }
+          : item
+      )
+    );
+
+    return { error: null };
+  }
+
+  function handleCommentCountDelta(resourceId, delta) {
+    setResourceList((currentResources) =>
+      currentResources.map((item) =>
+        item.id === resourceId
+          ? {
+              ...item,
+              commentsCount: Math.max(0, (item.commentsCount || 0) + delta)
+            }
+          : item
+      )
+    );
   }
 
   async function handleSignOut() {
@@ -383,6 +626,8 @@ function App() {
         userProfile={userProfile}
         onSignOut={handleSignOut}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onOpenProfile={() => setShowProfileModal(true)}
+        onOpenModeration={() => setShowModerationModal(true)}
       />
 
       <main className="workspace">
@@ -398,10 +643,10 @@ function App() {
         <section className="content">
           <header className="page-header">
             <div className="page-header-copy">
-              <p className="label">YOUR STUDY MATERIAL</p>
+              <p className="label">COMMUNITY STUDY PLATFORM</p>
               <h1>Resource Library</h1>
               <p className="description">
-                Find notes, presentations, and useful study resources.
+                Share, preview, discuss, and improve study resources across every subject.
               </p>
             </div>
 
@@ -414,19 +659,25 @@ function App() {
             </div>
           </header>
 
-          {userRole === "facilitator" && (
-            <GoogleDriveConnect
-              session={session}
-              userRole={userRole}
-            />
+          {isSuspended && (
+            <div className="suspended-banner" role="alert">
+              <strong>Account suspended:</strong> You can browse and download
+              resources, but uploading, commenting, and editing are currently
+              disabled.
+            </div>
           )}
 
           {canUploadResource && (
-            <UploadForm addResource={addResource} />
+            <UploadForm
+              addResource={addResource}
+              existingSubjects={subjects}
+            />
           )}
 
           {errorMessage && (
-            <p className="error-message">{errorMessage}</p>
+            <p className="error-message" role="alert">
+              {errorMessage}
+            </p>
           )}
 
           <div className="filters">
@@ -517,7 +768,14 @@ function App() {
                       key={item.id}
                       item={item}
                       likeResource={likeResource}
+                      onEditResource={updateResource}
+                      onDeleteResource={deleteResource}
+                      onOpenDiscussion={(resItem, tab = "comments") =>
+                        setActiveDiscussion({ item: resItem, tab })
+                      }
                       session={session}
+                      userRole={userRole}
+                      userStatus={userProfile?.status || "active"}
                     />
                   ))
                 ) : resourceList.length === 0 ? (
@@ -526,7 +784,7 @@ function App() {
                     <p>
                       {canUploadResource
                         ? "Use the upload form above to share the first PDF, PPT, or PPTX study material."
-                        : "Study materials uploaded by your facilitators and teachers will appear here."}
+                        : "Community study materials will appear here once uploaded."}
                     </p>
 
                     {canUploadResource && (
@@ -587,6 +845,36 @@ function App() {
           )}
         </section>
       </main>
+
+      {showProfileModal && (
+        <ProfileModal
+          session={session}
+          userProfile={userProfile}
+          userRole={userRole}
+          onClose={() => setShowProfileModal(false)}
+          onSaveProfile={handleSaveProfile}
+        />
+      )}
+
+      {activeDiscussion && (
+        <ResourceDiscussionModal
+          item={activeDiscussion.item}
+          initialTab={activeDiscussion.tab}
+          session={session}
+          userRole={userRole}
+          userProfile={userProfile}
+          onClose={() => setActiveDiscussion(null)}
+          onCommentCountChange={handleCommentCountDelta}
+        />
+      )}
+
+      {showModerationModal && userRole === "admin" && (
+        <AdminModerationModal
+          session={session}
+          onClose={() => setShowModerationModal(false)}
+          onDeleteResource={deleteResource}
+        />
+      )}
     </div>
   );
 }
