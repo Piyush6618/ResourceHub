@@ -16,6 +16,7 @@ function formatFileSize(bytes) {
 function UploadForm({ addResource, existingSubjects = [] }) {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
   const [file, setFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -61,6 +62,7 @@ function UploadForm({ addResource, existingSubjects = [] }) {
 
     const cleanTitle = title.trim();
     const cleanSubject = normalizeSubjectName(subject);
+    const cleanDescription = description.trim();
 
     if (!cleanTitle || !cleanSubject || !file) {
       setFeedback({
@@ -85,6 +87,7 @@ function UploadForm({ addResource, existingSubjects = [] }) {
       const success = await addResource({
         title: cleanTitle,
         subject: cleanSubject,
+        description: cleanDescription,
         type: validation.extension,
         mimeType: validation.mimeType,
         file: file
@@ -93,6 +96,7 @@ function UploadForm({ addResource, existingSubjects = [] }) {
       if (success) {
         setTitle("");
         setSubject("");
+        setDescription("");
         setFile(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
@@ -123,10 +127,10 @@ function UploadForm({ addResource, existingSubjects = [] }) {
         <div className="upload-header-copy">
           <div className="upload-title-row">
             <h2 id="upload-form-heading">Add a resource</h2>
-            <span className="upload-pill-tag">Community Upload</span>
+            <span className="upload-pill-tag">Community Share</span>
           </div>
           <p className="upload-spec">
-            Supported formats: PDF, PPT, PPTX &middot; Maximum size: 20 MB
+            PDF, PPT, or PPTX up to 20 MB &middot; Open to all members
           </p>
         </div>
 
@@ -137,7 +141,7 @@ function UploadForm({ addResource, existingSubjects = [] }) {
           aria-expanded={!collapsed}
           aria-label={collapsed ? "Expand upload form" : "Collapse upload form"}
         >
-          {collapsed ? "Expand Form" : "Collapse"}
+          {collapsed ? "Expand" : "Collapse"}
         </button>
       </div>
 
@@ -208,6 +212,20 @@ function UploadForm({ addResource, existingSubjects = [] }) {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="upload-field description-field">
+            <label className="field-label" htmlFor="resource-description-input">
+              Description (optional)
+            </label>
+            <input
+              id="resource-description-input"
+              type="text"
+              placeholder="Add key topics, chapter notes, or syllabus context..."
+              maxLength={1000}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
           </div>
 
           {file && (

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { normalizeSubjectName } from "../utils/fileValidation";
+import PdfViewer from "./PdfViewer";
 
 function getUploaderInitials(name) {
   const parts = String(name || "U")
@@ -11,6 +12,19 @@ function getUploaderInitials(name) {
     return (parts[0][0] + parts[1][0]).toUpperCase();
   }
   return parts[0] ? parts[0].slice(0, 2).toUpperCase() : "U";
+}
+
+function getCleanFileName(rawFileName, title, type) {
+  if (rawFileName) {
+    const basename = rawFileName.split("/").pop();
+    // Strip timestamp prefix if present: "1731339847-notes.pdf" -> "notes.pdf"
+    const cleaned = basename.replace(/^\d+[-_]/, "");
+    if (cleaned && cleaned.includes(".")) {
+      return cleaned;
+    }
+  }
+  const ext = String(type || "file").toLowerCase();
+  return `${title || "resource"}.${ext}`;
 }
 
 function ResourceRow({
@@ -24,14 +38,15 @@ function ResourceRow({
   userStatus
 }) {
   const [showPreview, setShowPreview] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewBlob, setPreviewBlob] = useState(null);
+  const [signedPdfUrl, setSignedPdfUrl] = useState("");
   const [previewMode, setPreviewMode] = useState("none"); // "pdf" | "pptx" | "fallback"
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [liking, setLiking] = useState(false);
 
-  // More actions menu state (for mobile / tablet)
+  // More actions menu state (for mobile / desktop)
   const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const moreActionsRef = useRef(null);
   const moreActionsTriggerRef = useRef(null);
@@ -63,22 +78,12 @@ function ResourceRow({
     setShowPreview(false);
     setPreviewError("");
     setPreviewMode("none");
+    setPreviewBlob(null);
+    setSignedPdfUrl("");
     pptxBufferRef.current = null;
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-      setPreviewUrl("");
-    }
-  }, [previewUrl]);
+  }, []);
 
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
-
-  // Handle ESC key for preview, edit, and delete dialogs
+  // Handle ESC key for modals & menus
   useEffect(() => {
     function handleKeyDown(event) {
       if (event.key === "Escape") {
@@ -187,7 +192,7 @@ function ResourceRow({
       const link = document.createElement("a");
 
       link.href = url;
-      link.download = item.fileName || item.title;
+      link.download = getCleanFileName(item.fileName, item.title, item.type);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -201,7 +206,8 @@ function ResourceRow({
   async function previewFile() {
     setShowPreview(true);
     setPreviewError("");
-    setPreviewUrl("");
+    setPreviewBlob(null);
+    setSignedPdfUrl("");
     setPreviewMode("none");
     pptxBufferRef.current = null;
 
@@ -224,12 +230,27 @@ function ResourceRow({
     setPreviewLoading(true);
 
     try {
-      const { data, error } = await supabase.storage
+      const downloadPromise = supabase.storage
         .from("resources")
         .download(item.filePath);
 
+      // Concurrently create signed URL for reliable mobile Android opening
+      const signedUrlPromise =
+        typeof supabase.storage.from("resources").createSignedUrl === "function"
+          ? supabase.storage.from("resources").createSignedUrl(item.filePath, 3600)
+          : Promise.resolve({ data: null, error: null });
+
+      const [{ data, error }, signedRes] = await Promise.all([
+        downloadPromise,
+        signedUrlPromise
+      ]);
+
       if (error) {
         throw new Error(error.message);
+      }
+
+      if (signedRes?.data?.signedUrl) {
+        setSignedPdfUrl(signedRes.data.signedUrl);
       }
 
       if (normalized === "PDF") {
@@ -238,8 +259,7 @@ function ResourceRow({
             ? data
             : new Blob([data], { type: "application/pdf" });
 
-        const url = URL.createObjectURL(pdfBlob);
-        setPreviewUrl(url);
+        setPreviewBlob(pdfBlob);
         setPreviewMode("pdf");
       } else if (normalized === "PPTX") {
         if (data && typeof data.arrayBuffer === "function") {
@@ -358,19 +378,37 @@ function ResourceRow({
 
   const uploaderName = item.uploaderName || item.uploader || "ResourceHub user";
   const uploaderInitials = getUploaderInitials(uploaderName);
+  const cleanFileName = getCleanFileName(item.fileName, item.title, item.type);
 
   return (
     <>
       <article
-        className="resource-row"
+        className="resource-card"
         onClick={previewFile}
         onKeyDown={handleRowKeyDown}
         tabIndex={0}
         aria-label={`${item.title}, ${normalizedType} file`}
       >
-        {/* Mobile Top Header (Visible on mobile cards) */}
-        <div className="mobile-card-topbar">
-          <div className="mobile-card-badges">
+        {/* Card Header: Uploader Identity, Date, Subject, File Badge */}
+        <div className="card-header">
+          <div className="card-uploader-info">
+            <span className="card-avatar" aria-hidden="true">
+              {uploaderInitials}
+            </span>
+            <div className="card-author-meta">
+              <span className="card-author-name">{uploaderName}</span>
+              {item.designation ? (
+                <span className="card-author-designation">
+                  &middot; {item.designation}
+                </span>
+              ) : null}
+              <span className="card-date-separator">&middot;</span>
+              <span className="card-date">{item.date}</span>
+            </div>
+          </div>
+
+          <div className="card-tags-group">
+            <span className="subject-pill">{item.subject}</span>
             <span className={badgeClass} aria-label={`${normalizedType} file`}>
               <svg
                 className="file-icon-glyph"
@@ -389,25 +427,172 @@ function ResourceRow({
               </svg>
               <span>{normalizedType}</span>
             </span>
-            <span className="subject-pill">{item.subject}</span>
           </div>
+        </div>
 
-          <div
-            className="mobile-card-top-actions"
-            onClick={(e) => e.stopPropagation()}
-          >
+        {/* Card Body: Title & Description Snippet */}
+        <div className="card-body">
+          <h3 className="card-title" title={item.title}>
+            {item.title}
+          </h3>
+
+          {item.description ? (
+            <p className="card-description">{item.description}</p>
+          ) : null}
+        </div>
+
+        {/* Card Footer: Community Interactions & Primary Actions */}
+        <div
+          className="card-footer"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="card-engagement-group">
+            {/* Like Interaction Pill */}
             <button
               type="button"
-              className={item.likedByMe ? "like-button liked" : "like-button"}
+              className={item.likedByMe ? "feed-pill-btn liked" : "feed-pill-btn"}
               onClick={handleLikeClick}
               disabled={liking || isSuspended}
               aria-label={item.likedByMe ? "Unlike resource" : "Like resource"}
             >
-              <span aria-hidden="true">{item.likedByMe ? "♥" : "♡"}</span>
-              <span className="like-count">{item.likes}</span>
+              <span className="pill-icon" aria-hidden="true">
+                {item.likedByMe ? "♥" : "♡"}
+              </span>
+              <span className="pill-count">{item.likes}</span>
             </button>
 
-            {/* Mobile More Actions Trigger */}
+            {/* Discussions Pill */}
+            {onOpenDiscussion && (
+              <button
+                type="button"
+                className="feed-pill-btn"
+                onClick={() => onOpenDiscussion(item, "comments")}
+                aria-label={`Discuss ${item.title}`}
+              >
+                <svg
+                  className="pill-icon"
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 3.5C2 2.67 2.67 2 3.5 2H12.5C13.33 2 14 2.67 14 3.5V10.5C14 11.33 13.33 12 12.5 12H5.5L2 15V3.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>
+                  {typeof item.commentsCount === "number" && item.commentsCount > 0
+                    ? `${item.commentsCount} comments`
+                    : "Discuss"}
+                </span>
+              </button>
+            )}
+
+            {/* Suggestions Pill */}
+            {onOpenDiscussion && (
+              <button
+                type="button"
+                className="feed-pill-btn desktop-only-pill"
+                onClick={() => onOpenDiscussion(item, "suggestions")}
+                aria-label={`Suggest improvement for ${item.title}`}
+              >
+                <svg
+                  className="pill-icon"
+                  width="13"
+                  height="13"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M8 1.5C5.5 1.5 3.5 3.5 3.5 6C3.5 7.8 4.5 9.3 6 10.1V12C6 12.3 6.2 12.5 6.5 12.5H9.5C9.8 12.5 10 12.3 10 12V10.1C11.5 9.3 12.5 7.8 12.5 6C12.5 3.5 10.5 1.5 8 1.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                  <path d="M6 14.5H10" stroke="currentColor" strokeWidth="1.3" />
+                </svg>
+                <span>Suggest</span>
+              </button>
+            )}
+          </div>
+
+          <div className="card-actions-group">
+            {/* Primary Action: Preview */}
+            <button
+              type="button"
+              className="action-button preview-action-btn"
+              onClick={previewFile}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 3C4.5 3 1.5 8 1.5 8C1.5 8 4.5 13 8 13C11.5 13 14.5 8 14.5 8C14.5 8 11.5 3 8 3Z"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+              </svg>
+              <span>Preview</span>
+            </button>
+
+            {/* Primary Action: Download */}
+            <button
+              type="button"
+              className="action-button action-button-primary"
+              onClick={downloadFile}
+              disabled={downloading}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 16"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 13.5H13.5"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              <span>{downloading ? "Saving..." : "Download"}</span>
+            </button>
+
+            {canManageResource && (
+              <>
+                <button
+                  type="button"
+                  className="action-button desktop-only-btn"
+                  onClick={openEditModal}
+                  aria-label={`Edit ${item.title}`}
+                >
+                  Edit
+                </button>
+
+                <button
+                  type="button"
+                  className="action-button danger-link desktop-only-btn"
+                  onClick={triggerDeletePrompt}
+                  disabled={deleting}
+                  aria-label={`Delete ${item.title}`}
+                >
+                  Delete
+                </button>
+              </>
+            )}
+
+            {/* More Actions Menu Button */}
             <div className="more-actions-container">
               <button
                 ref={moreActionsTriggerRef}
@@ -496,206 +681,9 @@ function ResourceRow({
             </div>
           </div>
         </div>
-
-        {/* Desktop File Icon Badge (Hidden on mobile cards) */}
-        <span
-          className={`desktop-badge ${badgeClass}`}
-          aria-label={`${normalizedType} file`}
-        >
-          <svg
-            className="file-icon-glyph"
-            width="11"
-            height="11"
-            viewBox="0 0 12 12"
-            fill="none"
-            aria-hidden="true"
-          >
-            <path
-              d="M2.5 1.5H7.5L9.5 3.5V10.5H2.5V1.5Z"
-              stroke="currentColor"
-              strokeWidth="1.2"
-              strokeLinejoin="round"
-            />
-          </svg>
-          <span>{normalizedType}</span>
-        </span>
-
-        {/* Resource Body / Meta */}
-        <div className="resource-info">
-          <div className="resource-title-line">
-            <h3 title={item.title}>{item.title}</h3>
-            <span className="desktop-subject-pill subject-pill">
-              {item.subject}
-            </span>
-          </div>
-
-          {item.description ? (
-            <p className="resource-description-snippet">{item.description}</p>
-          ) : null}
-
-          <p className="resource-meta">
-            <span className="uploader-avatar-chip" aria-hidden="true">
-              {uploaderInitials}
-            </span>
-            <span className="resource-uploader">
-              Uploaded by <strong>{uploaderName}</strong>
-              {item.designation ? (
-                <span className="uploader-designation">
-                  {" "}
-                  &middot; {item.designation}
-                </span>
-              ) : null}
-            </span>
-            <span className="meta-dot" aria-hidden="true">
-              &middot;
-            </span>
-            <span className="resource-date">{item.date}</span>
-          </p>
-        </div>
-
-        {/* Desktop / Tablet Resource Actions */}
-        <div
-          className="resource-actions desktop-actions"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <button
-            type="button"
-            className={item.likedByMe ? "like-button liked" : "like-button"}
-            onClick={handleLikeClick}
-            disabled={liking || isSuspended}
-            aria-label={item.likedByMe ? "Unlike resource" : "Like resource"}
-          >
-            <span aria-hidden="true">{item.likedByMe ? "♥" : "♡"}</span>
-            <span className="like-count">{item.likes}</span>
-          </button>
-
-          {onOpenDiscussion && (
-            <>
-              <button
-                type="button"
-                className="action-button"
-                onClick={() => onOpenDiscussion(item, "comments")}
-                aria-label={`Discuss ${item.title}`}
-              >
-                Discuss
-                {typeof item.commentsCount === "number" &&
-                item.commentsCount > 0
-                  ? ` (${item.commentsCount})`
-                  : ""}
-              </button>
-
-              <button
-                type="button"
-                className="action-button"
-                onClick={() => onOpenDiscussion(item, "suggestions")}
-                aria-label={`Suggest improvement for ${item.title}`}
-              >
-                Suggest
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            className="action-button"
-            onClick={previewFile}
-          >
-            Preview
-          </button>
-
-          <button
-            type="button"
-            className="action-button action-button-primary"
-            onClick={downloadFile}
-            disabled={downloading}
-          >
-            {downloading ? "Saving..." : "Download"}
-          </button>
-
-          {canManageResource && (
-            <>
-              <button
-                type="button"
-                className="action-button"
-                onClick={openEditModal}
-                aria-label={`Edit ${item.title}`}
-              >
-                Edit
-              </button>
-
-              <button
-                type="button"
-                className="action-button danger-link"
-                onClick={triggerDeletePrompt}
-                disabled={deleting}
-                aria-label={`Delete ${item.title}`}
-              >
-                {deleting ? "Deleting..." : "Delete"}
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Mobile Bottom Action Bar (1-click touch targets) */}
-        <div
-          className="mobile-card-bottombar"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="mobile-card-btn preview-card-btn"
-            onClick={previewFile}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M8 3C4.5 3 1.5 8 1.5 8C1.5 8 4.5 13 8 13C11.5 13 14.5 8 14.5 8C14.5 8 11.5 3 8 3Z"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              />
-              <circle
-                cx="8"
-                cy="8"
-                r="2.5"
-                stroke="currentColor"
-                strokeWidth="1.3"
-              />
-            </svg>
-            Preview
-          </button>
-
-          <button
-            type="button"
-            className="mobile-card-btn download-card-btn"
-            onClick={downloadFile}
-            disabled={downloading}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 16 16"
-              fill="none"
-              aria-hidden="true"
-            >
-              <path
-                d="M8 2.5V10.5M8 10.5L5 7.5M8 10.5L11 7.5M2.5 13.5H13.5"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            {downloading ? "Saving..." : "Download"}
-          </button>
-        </div>
       </article>
 
-      {/* Preview Modal */}
+      {/* Multi-Tier Preview Modal with PDF.js & Mobile Android Fix */}
       {showPreview && (
         <div className="preview-overlay" onClick={closePreview}>
           <section
@@ -710,11 +698,23 @@ function ResourceRow({
                 <span className={badgeClass}>{normalizedType}</span>
                 <div className="preview-header-titles">
                   <h2>{item.title}</h2>
-                  <span>{item.fileName || item.title}</span>
+                  <span className="preview-clean-filename">{cleanFileName}</span>
                 </div>
               </div>
 
               <div className="preview-header-actions">
+                {signedPdfUrl && (
+                  <button
+                    type="button"
+                    className="action-button desktop-only-btn"
+                    onClick={() =>
+                      window.open(signedPdfUrl, "_blank", "noopener,noreferrer")
+                    }
+                    title="Open full file in a new browser tab"
+                  >
+                    Open in Tab
+                  </button>
+                )}
                 {onOpenDiscussion && (
                   <button
                     type="button"
@@ -752,11 +752,14 @@ function ResourceRow({
                   <span className="btn-spinner" aria-hidden="true" />
                   <p className="status-text">Preparing preview...</p>
                 </div>
-              ) : previewMode === "pdf" && previewUrl ? (
-                <iframe
-                  src={previewUrl}
-                  title={"Preview of " + item.title}
-                  className="preview-frame"
+              ) : previewMode === "pdf" && previewBlob ? (
+                <PdfViewer
+                  pdfBlob={previewBlob}
+                  signedUrl={signedPdfUrl}
+                  title={item.title}
+                  fileName={cleanFileName}
+                  onDownload={downloadFile}
+                  downloading={downloading}
                 />
               ) : previewMode === "pptx" ? (
                 <div
@@ -783,6 +786,17 @@ function ResourceRow({
                     >
                       {downloading ? "Saving..." : "Download file"}
                     </button>
+                    {signedPdfUrl && (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() =>
+                          window.open(signedPdfUrl, "_blank", "noopener,noreferrer")
+                        }
+                      >
+                        Open in New Tab
+                      </button>
+                    )}
                     {onOpenDiscussion && (
                       <button
                         type="button"

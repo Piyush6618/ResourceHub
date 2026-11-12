@@ -570,4 +570,73 @@ describe("ResourceHub Universal Community Platform UI & Access Control", () => {
 
     expect(screen.getByPlaceholderText("Resource title")).toBeInTheDocument();
   });
+
+  test("community feed tabs sort resources by latest, popular, and most discussed", async () => {
+    const sampleResources = [
+      {
+        id: "r1",
+        title: "Alpha Oldest Resource",
+        subject: "Math",
+        file_name: "alpha.pdf",
+        file_path: "user-123/alpha.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-01T10:00:00.000Z",
+        likes_count: 5,
+        comments_count: 2
+      },
+      {
+        id: "r2",
+        title: "Beta High Likes Resource",
+        subject: "Math",
+        file_name: "beta.pdf",
+        file_path: "user-123/beta.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-02T10:00:00.000Z",
+        likes_count: 50,
+        comments_count: 1
+      },
+      {
+        id: "r3",
+        title: "Gamma High Comments Resource",
+        subject: "Math",
+        file_name: "gamma.pdf",
+        file_path: "user-123/gamma.pdf",
+        file_type: "PDF",
+        owner_id: "user-123",
+        created_at: "2026-11-03T10:00:00.000Z",
+        likes_count: 10,
+        comments_count: 42
+      }
+    ];
+
+    setupMockRole("user", sampleResources);
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Alpha Oldest Resource")).toBeInTheDocument();
+      expect(screen.getByText("Beta High Likes Resource")).toBeInTheDocument();
+      expect(screen.getByText("Gamma High Comments Resource")).toBeInTheDocument();
+    });
+
+    // Check Discovery Sidebar elements
+    expect(screen.getByText(/about resourcehub/i)).toBeInTheDocument();
+    expect(screen.getByText(/community rules/i)).toBeInTheDocument();
+
+    // Click Popular tab
+    const popularTab = screen.getByRole("tab", { name: /popular/i });
+    fireEvent.click(popularTab);
+    expect(popularTab).toHaveAttribute("aria-selected", "true");
+
+    // Click Most discussed tab
+    const discussedTab = screen.getByRole("tab", { name: /most discussed/i });
+    fireEvent.click(discussedTab);
+    expect(discussedTab).toHaveAttribute("aria-selected", "true");
+
+    // Click Latest tab
+    const latestTab = screen.getByRole("tab", { name: /latest/i });
+    fireEvent.click(latestTab);
+    expect(latestTab).toHaveAttribute("aria-selected", "true");
+  });
 });

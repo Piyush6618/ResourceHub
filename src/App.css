@@ -104,6 +104,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+.resource-card:focus-visible,
 .resource-row:focus-visible {
   outline: 2px solid var(--text-primary);
   outline-offset: 2px;
@@ -413,7 +414,7 @@ textarea:focus-visible,
 }
 
 /* ==========================================================================
-   Workspace Layout (Desktop & Sidebar)
+   Workspace Layout (Community Feed 3-Column / 2-Column Grid)
    ========================================================================== */
 .workspace {
   flex: 1;
@@ -422,7 +423,7 @@ textarea:focus-visible,
   margin: 0 auto;
   padding: 24px 24px 64px;
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 240px minmax(0, 1fr) 290px;
   gap: 24px;
   align-items: start;
 }
@@ -635,6 +636,11 @@ textarea:focus-visible,
   min-width: 0;
 }
 
+.community-feed-column {
+  display: flex;
+  flex-direction: column;
+}
+
 .page-header {
   display: flex;
   align-items: flex-end;
@@ -719,7 +725,7 @@ textarea:focus-visible,
    ========================================================================== */
 .upload-form-card {
   padding: 16px 20px;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
@@ -1015,6 +1021,68 @@ textarea:focus-visible,
 }
 
 /* ==========================================================================
+   Community Feed Header & Sort Tabs (Latest / Popular / Most Discussed)
+   ========================================================================== */
+.community-feed-header {
+  margin-bottom: 12px;
+}
+
+.feed-nav-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-subtle);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.feed-nav-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.feed-nav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all var(--transition-base);
+}
+
+.feed-nav-tab:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.feed-nav-tab.active {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(23, 23, 23, 0.04);
+}
+
+.feed-tab-icon {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.feed-nav-tab.active .feed-tab-icon {
+  opacity: 1;
+}
+
+/* ==========================================================================
    Search & Filter Toolbar
    ========================================================================== */
 .filters-toolbar {
@@ -1156,46 +1224,123 @@ textarea:focus-visible,
 }
 
 /* ==========================================================================
-   Resource List & Row / Card Redesign
+   Community Card Feed (Reddit + Modern Educational Card System)
    ========================================================================== */
-.resource-list {
+.community-card-feed {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: visible;
+}
+
+.resource-card {
+  display: flex;
+  flex-direction: column;
   background-color: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-card);
+  padding: 16px;
   box-shadow: var(--shadow-subtle);
-  overflow: hidden;
-}
-
-.resource-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--border-color);
   cursor: pointer;
-  transition: background-color var(--transition-base);
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
   position: relative;
 }
 
-.resource-row:hover {
+.resource-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card);
+}
+
+/* Card Header: Author Meta & Tags */
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.card-uploader-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.card-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
   background-color: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
-.resource-row:last-child {
-  border-bottom: none;
+.card-author-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Mobile-only elements (hidden by default on desktop) */
-.mobile-card-topbar,
-.mobile-card-bottombar {
-  display: none;
+.card-author-name {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
-/* File icon badges */
-.file-icon {
-  min-width: 56px;
-  height: 30px;
+.card-author-designation {
+  color: var(--text-secondary);
+}
+
+.card-date-separator {
+  color: var(--border-color);
+}
+
+.card-date {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.card-tags-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.subject-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
   padding: 0 8px;
+  background-color: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-badge);
+  font-size: 11px;
+  font-weight: 500;
+  color: #525252;
+  flex-shrink: 0;
+}
+
+/* File Icon Badges */
+.file-icon {
+  min-width: 54px;
+  height: 24px;
+  padding: 0 7px;
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -1227,141 +1372,94 @@ textarea:focus-visible,
   color: var(--ppt-text);
 }
 
-.desktop-badge {
-  display: inline-flex;
+/* Card Body */
+.card-body {
+  margin-bottom: 14px;
 }
 
-.resource-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.resource-title-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 3px;
-}
-
-.resource-info h3 {
-  font-size: 14px;
+.card-title {
+  font-size: 15px;
   font-weight: 600;
   line-height: 1.35;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.resource-description-snippet {
-  font-size: 12px;
-  color: var(--text-secondary);
   margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.card-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.subject-pill {
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
-  padding: 0 8px;
-  background-color: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-badge);
-  font-size: 11px;
-  font-weight: 500;
-  color: #525252;
-  flex-shrink: 0;
-}
-
-.resource-meta {
+/* Card Footer: Community Engagement & Primary Actions */
+.card-footer {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.card-engagement-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-wrap: wrap;
-  gap: 6px;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--text-secondary);
 }
 
-.uploader-avatar-chip {
-  width: 20px;
-  height: 20px;
-  border-radius: 9999px;
-  background-color: var(--bg-hover);
-  border: 1px solid var(--border-color);
-  font-size: 9px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-
-.resource-meta strong {
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.uploader-designation {
-  color: var(--text-secondary);
-}
-
-.meta-dot {
-  color: var(--border-color);
-}
-
-.resource-date {
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-secondary);
-}
-
-/* Actions in Resource Row */
-.resource-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.desktop-actions {
-  display: flex;
-}
-
-.like-button {
-  height: 32px;
+.feed-pill-btn {
+  height: 30px;
   padding: 0 10px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-control);
-  background-color: var(--bg-card);
-  color: var(--text-primary);
+  background-color: var(--bg-main);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 500;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
 }
 
-.like-button:hover:not(:disabled) {
+.feed-pill-btn:hover:not(:disabled) {
   background-color: var(--bg-hover);
+  color: var(--text-primary);
   border-color: var(--border-hover);
 }
 
-.like-button.liked {
+.feed-pill-btn.liked {
   border-color: var(--pdf-border);
   background-color: var(--pdf-bg);
   color: var(--pdf-text);
 }
 
-.action-button,
-.download-button {
-  height: 32px;
+.pill-icon {
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pill-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.card-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.action-button {
+  height: 30px;
   padding: 0 11px;
   border: 1px solid var(--border-color);
   border-radius: var(--radius-control);
@@ -1375,8 +1473,7 @@ textarea:focus-visible,
   white-space: nowrap;
 }
 
-.action-button:hover:not(:disabled),
-.download-button:hover:not(:disabled) {
+.action-button:hover:not(:disabled) {
   background-color: var(--bg-hover);
   border-color: var(--border-hover);
 }
@@ -1389,23 +1486,20 @@ textarea:focus-visible,
 
 .action-button-primary:hover:not(:disabled) {
   background-color: var(--btn-primary-hover);
-  border-color: var(--btn-primary-hover);
 }
 
-.download-button:disabled,
-.action-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+.preview-action-btn svg {
+  opacity: 0.8;
 }
 
-/* More Actions Dropdown (Mobile / Tablet) */
+/* More Actions Popover */
 .more-actions-container {
   position: relative;
 }
 
 .more-actions-button {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1434,6 +1528,328 @@ textarea:focus-visible,
   padding: 6px 0;
   z-index: 50;
   animation: dropdownFadeIn 120ms ease;
+}
+
+/* ==========================================================================
+   Discovery Right Sidebar (Desktop >= 1200px)
+   ========================================================================== */
+.discovery-sidebar {
+  position: sticky;
+  top: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.discovery-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  box-shadow: var(--shadow-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.discovery-tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.discovery-card h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.discovery-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.discovery-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin: 6px 0;
+  padding: 8px;
+  background-color: var(--bg-main);
+  border-radius: var(--radius-control);
+  border: 1px solid var(--border-color);
+}
+
+.discovery-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.stat-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-lbl {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.discovery-cta-btn {
+  height: 36px;
+  width: 100%;
+  border: 1px solid var(--btn-primary);
+  border-radius: var(--radius-control);
+  background-color: var(--btn-primary);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.discovery-cta-btn:hover {
+  background-color: var(--btn-primary-hover);
+}
+
+.discovery-subjects-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.discovery-subject-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: var(--radius-control);
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.discovery-subject-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.discovery-subject-btn.active {
+  background-color: var(--bg-hover);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subject-link-count {
+  font-size: 11px;
+  font-weight: 600;
+  background-color: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-badge);
+  padding: 0 5px;
+}
+
+.guidelines-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.guidelines-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.bullet-num {
+  width: 16px;
+  height: 16px;
+  border-radius: 9999px;
+  background-color: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-primary);
+  margin-top: 1px;
+}
+
+/* ==========================================================================
+   PDF Viewer Component (PDF.js Inline Canvas & Android Fix)
+   ========================================================================== */
+.pdf-viewer-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: var(--bg-main);
+  overflow: hidden;
+}
+
+.pdf-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  background-color: var(--bg-card);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.pdf-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pdf-tool-btn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-control);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pdf-tool-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  border-color: var(--border-hover);
+}
+
+.pdf-tool-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pdf-tool-btn-primary {
+  background-color: var(--btn-primary);
+  border-color: var(--btn-primary);
+  color: #ffffff;
+}
+
+.pdf-tool-btn-primary:hover:not(:disabled) {
+  background-color: var(--btn-primary-hover);
+}
+
+.pdf-page-indicator {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
+
+.pdf-zoom-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 42px;
+  text-align: center;
+}
+
+.pdf-viewport {
+  flex: 1;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  background-color: #525252;
+}
+
+.pdf-canvas-wrapper {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  background-color: #ffffff;
+  display: inline-block;
+  line-height: 0;
+}
+
+.pdf-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto !important;
+}
+
+.pdf-loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  gap: 12px;
+  color: #ffffff;
+}
+
+.pdf-loading-state .status-text {
+  color: #e5e5e5;
+}
+
+.pdf-fallback-card {
+  max-width: 440px;
+  padding: 28px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-card);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.fallback-explanation {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+.pdf-fallback-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.preview-clean-filename {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ==========================================================================
@@ -2064,24 +2480,16 @@ textarea:focus-visible,
    RESPONSIVE DESIGN BREAKPOINTS
    ========================================================================== */
 
-/* Laptop / Small Desktop (<= 1200px) */
-@media (max-width: 1200px) {
-  .topbar-inner {
-    padding: 0 20px;
-  }
-
+/* Laptop / Small Desktop (<= 1240px) - Hide Right Discovery Sidebar */
+@media (max-width: 1240px) {
   .workspace {
-    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-columns: 240px minmax(0, 1fr);
     padding: 20px 20px 56px;
     gap: 20px;
   }
 
-  .upload-form-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .upload-form-grid .upload-field:nth-child(3) {
-    grid-column: span 2;
+  .discovery-sidebar {
+    display: none;
   }
 }
 
@@ -2182,6 +2590,10 @@ textarea:focus-visible,
     font-size: 22px;
   }
 
+  .desktop-only-pill {
+    display: none !important;
+  }
+
   /* Upload form stacks vertically */
   .upload-form-card {
     padding: 14px 16px;
@@ -2190,10 +2602,6 @@ textarea:focus-visible,
   .upload-form-grid {
     grid-template-columns: 1fr;
     gap: 10px;
-  }
-
-  .upload-form-grid .upload-field:nth-child(3) {
-    grid-column: span 1;
   }
 
   .upload-actions-bar {
@@ -2227,128 +2635,28 @@ textarea:focus-visible,
     width: 100%;
   }
 
-  /* ========================================================================
-     Resource Row -> Mobile Card Transformation
-     ======================================================================== */
-  .resource-list {
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow: visible;
-  }
-
-  .resource-row {
-    display: flex;
+  /* Card footer adapts */
+  .card-footer {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
-    padding: 14px;
-    background-color: var(--bg-card);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-card);
-    box-shadow: var(--shadow-subtle);
   }
 
-  .resource-row:hover {
-    background-color: var(--bg-card);
-    border-color: var(--border-hover);
+  .card-engagement-group {
+    justify-content: flex-start;
   }
 
-  .desktop-badge,
-  .desktop-actions,
-  .desktop-subject-pill {
-    display: none !important;
-  }
-
-  /* Mobile card header */
-  .mobile-card-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    gap: 8px;
-  }
-
-  .mobile-card-badges {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .mobile-card-top-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .resource-info {
-    width: 100%;
-  }
-
-  .resource-title-line {
-    margin-bottom: 4px;
-  }
-
-  .resource-info h3 {
-    font-size: 15px;
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .resource-description-snippet {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .resource-meta {
-    font-size: 12px;
-    gap: 6px;
-    margin-top: 4px;
-  }
-
-  /* Mobile card bottom action buttons */
-  .mobile-card-bottombar {
+  .card-actions-group {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
+    grid-template-columns: 1fr 1fr auto;
     width: 100%;
-    padding-top: 10px;
-    border-top: 1px solid var(--border-color);
-  }
-
-  .mobile-card-btn {
-    height: 38px;
-    padding: 0 12px;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-control);
-    background-color: var(--bg-card);
-    color: var(--text-primary);
-    font-size: 13px;
-    font-weight: 500;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     gap: 6px;
   }
 
-  .download-card-btn {
-    background-color: var(--btn-primary);
-    border-color: var(--btn-primary);
-    color: #ffffff;
-  }
-
-  .download-card-btn:hover:not(:disabled) {
-    background-color: var(--btn-primary-hover);
+  .preview-action-btn,
+  .action-button-primary {
+    justify-content: center;
+    height: 36px;
   }
 
   .desktop-only-btn {
@@ -2374,6 +2682,10 @@ textarea:focus-visible,
     max-height: 90vh;
     border-radius: var(--radius-card);
     margin: 16px;
+  }
+
+  .pdf-viewer-toolbar {
+    padding: 8px 12px;
   }
 }
 
@@ -2434,7 +2746,7 @@ textarea:focus-visible,
     display: none;
   }
 
-  .mobile-card-bottombar {
+  .card-actions-group {
     grid-template-columns: 1fr;
   }
 }

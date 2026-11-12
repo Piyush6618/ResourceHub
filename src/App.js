@@ -257,6 +257,7 @@ function App() {
     const matchesSearch =
       item.title.toLowerCase().includes(query) ||
       item.subject.toLowerCase().includes(query) ||
+      (item.description && item.description.toLowerCase().includes(query)) ||
       (item.uploaderName || "").toLowerCase().includes(query);
 
     return (
@@ -267,8 +268,11 @@ function App() {
   });
 
   const sortedResources = [...filteredResources].sort((a, b) => {
-    if (sortBy === "mostLiked") {
+    if (sortBy === "mostLiked" || sortBy === "popular") {
       return b.likes - a.likes;
+    }
+    if (sortBy === "mostDiscussed") {
+      return (b.commentsCount || 0) - (a.commentsCount || 0);
     }
 
     return new Date(b.createdAt) - new Date(a.createdAt);
@@ -392,6 +396,10 @@ function App() {
       owner_id: session.user.id
     };
 
+    if (newResource.description) {
+      insertPayload.description = newResource.description;
+    }
+
     if (subjectId) {
       insertPayload.subject_id = subjectId;
     }
@@ -413,7 +421,7 @@ function App() {
         id: data.id,
         ownerId: data.owner_id || session.user.id,
         title: data.title,
-        description: data.description || "",
+        description: data.description || newResource.description || "",
         subject: normalizeSubjectName(data.subject) || cleanSubject,
         type: data.file_type,
         uploaderName: userProfile?.display_name || "ResourceHub user",
@@ -614,9 +622,19 @@ function App() {
     search.trim() !== "" ||
     subject !== "All Subjects" ||
     fileType !== "All Files" ||
-    sortBy !== "newest";
+    (sortBy !== "newest" && sortBy !== "latest");
 
   const subjectTotal = Math.max(0, subjects.length - 1);
+  const totalComments = resourceList.reduce(
+    (acc, item) => acc + (item.commentsCount || 0),
+    0
+  );
+
+  const topSubjects = subjects
+    .filter((s) => s !== "All Subjects")
+    .map((name) => ({ name, count: subjectCounts[name] || 0 }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
 
   return (
     <div className="app-shell">
@@ -630,7 +648,8 @@ function App() {
         onOpenModeration={() => setShowModerationModal(true)}
       />
 
-      <main className="workspace">
+      <main className="workspace community-layout">
+        {/* Left: Subject Navigation Sidebar */}
         <Sidebar
           subjects={subjects}
           subject={subject}
@@ -640,13 +659,14 @@ function App() {
           onClose={() => setSidebarOpen(false)}
         />
 
-        <section className="content">
+        {/* Center: Community Feed Column */}
+        <section className="content community-feed-column">
           <header className="page-header">
             <div className="page-header-copy">
               <span className="library-sublabel">COMMUNITY REPOSITORY</span>
               <h1>Resource Library</h1>
               <p className="description">
-                Browse, preview, discuss, and suggest improvements for peer-reviewed academic resources.
+                Community-driven repository for university & high school study materials. Browse, discuss, and suggest improvements.
               </p>
             </div>
 
@@ -691,7 +711,106 @@ function App() {
             </p>
           )}
 
-          {/* Responsive Search & Filters Toolbar */}
+          {/* Community Feed Navigation: Latest / Popular / Most Discussed */}
+          <div className="community-feed-header" role="region" aria-label="Community feed navigation">
+            <div className="feed-nav-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sortBy === "newest" || sortBy === "latest"}
+                className={
+                  sortBy === "newest" || sortBy === "latest"
+                    ? "feed-nav-tab active"
+                    : "feed-nav-tab"
+                }
+                onClick={() => setSortBy("newest")}
+              >
+                <svg
+                  className="feed-tab-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <circle
+                    cx="8"
+                    cy="8"
+                    r="6.5"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                  />
+                  <path
+                    d="M8 4.5V8.5L10.5 10"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span>Latest</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sortBy === "mostLiked" || sortBy === "popular"}
+                className={
+                  sortBy === "mostLiked" || sortBy === "popular"
+                    ? "feed-nav-tab active"
+                    : "feed-nav-tab"
+                }
+                onClick={() => setSortBy("mostLiked")}
+              >
+                <svg
+                  className="feed-tab-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M8 14.5C8 14.5 1.5 10.5 1.5 6C1.5 3.8 3.3 2 5.5 2C6.8 2 7.9 2.6 8.5 3.5C9.1 2.6 10.2 2 11.5 2C13.7 2 15.5 3.8 15.5 6C15.5 10.5 9 14.5 9 14.5L8.5 14.8L8 14.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Popular</span>
+              </button>
+
+              <button
+                type="button"
+                role="tab"
+                aria-selected={sortBy === "mostDiscussed"}
+                className={
+                  sortBy === "mostDiscussed"
+                    ? "feed-nav-tab active"
+                    : "feed-nav-tab"
+                }
+                onClick={() => setSortBy("mostDiscussed")}
+              >
+                <svg
+                  className="feed-tab-icon"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 3.5C2 2.67 2.67 2 3.5 2H12.5C13.33 2 14 2.67 14 3.5V10.5C14 11.33 13.33 12 12.5 12H5.5L2 15V3.5Z"
+                    stroke="currentColor"
+                    strokeWidth="1.3"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                <span>Most discussed</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Secondary Filter Toolbar */}
           <div className="filters-toolbar">
             <div className="search-field">
               <svg
@@ -774,6 +893,7 @@ function App() {
                 >
                   <option value="newest">Newest first</option>
                   <option value="mostLiked">Most liked</option>
+                  <option value="mostDiscussed">Most discussed</option>
                 </select>
                 <svg
                   className="select-chevron"
@@ -799,7 +919,7 @@ function App() {
             <div className="resource-list">
               <div className="loading-state-box">
                 <span className="btn-spinner" aria-hidden="true" />
-                <p className="status-text">Loading resources...</p>
+                <p className="status-text">Loading community resources...</p>
               </div>
             </div>
           ) : (
@@ -807,7 +927,7 @@ function App() {
               <div className="list-toolbar">
                 <p className="count">
                   {sortedResources.length}{" "}
-                  {sortedResources.length === 1 ? "resource" : "resources"} found
+                  {sortedResources.length === 1 ? "resource" : "resources"} in feed
                 </p>
 
                 {hasActiveFilters && (
@@ -826,7 +946,7 @@ function App() {
                 )}
               </div>
 
-              <div className="resource-list">
+              <div className="resource-list community-card-feed">
                 {sortedResources.length > 0 ? (
                   sortedResources.map((item) => (
                     <ResourceRow
@@ -851,7 +971,7 @@ function App() {
                     <h3>No resources uploaded yet</h3>
                     <p>
                       {canUploadResource
-                        ? "Use the upload form above to share the first PDF, PPT, or PPTX study material with the community."
+                        ? "Use the form above to share the first PDF, PPT, or PPTX study material with the community."
                         : "Community study materials will appear here once uploaded."}
                     </p>
 
@@ -863,6 +983,7 @@ function App() {
                             "resource-title-input"
                           );
                           titleInput?.focus();
+                          titleInput?.scrollIntoView({ behavior: "smooth" });
                         }}
                       >
                         Upload first resource
@@ -918,6 +1039,99 @@ function App() {
             </>
           )}
         </section>
+
+        {/* Right: Community Discovery Sidebar (Desktop >= 1200px) */}
+        <aside className="discovery-sidebar" aria-label="Community Discovery Sidebar">
+          {/* Community Info Card */}
+          <div className="discovery-card">
+            <span className="discovery-tag">COMMUNITY</span>
+            <h4>About ResourceHub</h4>
+            <p className="discovery-text">
+              An open, peer-driven repository for academic notes, lecture slides, and exam preparation. Free for everyone, maintained by the community.
+            </p>
+
+            <div className="discovery-stats-grid">
+              <div className="discovery-stat-item">
+                <span className="stat-val">{resourceList.length}</span>
+                <span className="stat-lbl">Resources</span>
+              </div>
+              <div className="discovery-stat-item">
+                <span className="stat-val">{subjectTotal}</span>
+                <span className="stat-lbl">Subjects</span>
+              </div>
+              <div className="discovery-stat-item">
+                <span className="stat-val">{totalComments}</span>
+                <span className="stat-lbl">Comments</span>
+              </div>
+            </div>
+
+            {canUploadResource && (
+              <button
+                type="button"
+                className="discovery-cta-btn"
+                onClick={() => {
+                  const titleInput = document.getElementById(
+                    "resource-title-input"
+                  );
+                  titleInput?.focus();
+                  titleInput?.scrollIntoView({ behavior: "smooth" });
+                }}
+              >
+                + Share a Resource
+              </button>
+            )}
+          </div>
+
+          {/* Top Subjects Card */}
+          {topSubjects.length > 0 && (
+            <div className="discovery-card">
+              <span className="discovery-tag">POPULAR CATEGORIES</span>
+              <h4>Top Subjects</h4>
+              <ul className="discovery-subjects-list">
+                {topSubjects.map((s) => (
+                  <li key={s.name}>
+                    <button
+                      type="button"
+                      className={
+                        subject === s.name
+                          ? "discovery-subject-btn active"
+                          : "discovery-subject-btn"
+                      }
+                      onClick={() => setSubject(s.name)}
+                    >
+                      <span className="subject-link-name">{s.name}</span>
+                      <span className="subject-link-count">{s.count}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Community Guidelines Card */}
+          <div className="discovery-card discovery-guidelines-card">
+            <span className="discovery-tag">GUIDELINES</span>
+            <h4>Community Rules</h4>
+            <ul className="guidelines-list">
+              <li>
+                <span className="bullet-num">1</span>
+                <span>Share original notes, lecture slides, or open textbooks.</span>
+              </li>
+              <li>
+                <span className="bullet-num">2</span>
+                <span>Use descriptive titles and correct subject categorization.</span>
+              </li>
+              <li>
+                <span className="bullet-num">3</span>
+                <span>Keep comments constructive; suggest specific improvements.</span>
+              </li>
+              <li>
+                <span className="bullet-num">4</span>
+                <span>Report corrupt files or spam immediately to moderators.</span>
+              </li>
+            </ul>
+          </div>
+        </aside>
       </main>
 
       {showProfileModal && (
